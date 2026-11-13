@@ -4,11 +4,12 @@
     python tests/seed_demo.py
 
 生成内容：
-- 10 名学生首轮各提交 3 个意向（覆盖 4 个实训室）
+- 10 名学生首轮各提交 3 个意向（覆盖 4 个实训室），并补齐个人简历
 - 实训室1：场次进行中，3 人已签到并完成双评委评分；李娜已确认录取、张伟待确认
 - 实训室2：明日场次已排人，用于演示签到与评分
-- 实训室3：场次进行中，孙悦已拟录取，周涛已评分待拟录取，吴敏未签到
-- 公示批次 1 个（含 3 条拟录取记录）＋ 1 条待处理异议
+- 实训室3：场次进行中，孙悦已拟录取、周涛已确认录取，吴敏未签到
+- 1 条待约谈调剂记录（王强，数据智能实训室）
+- 公示批次 1 个（含拟录取记录）＋ 1 条待处理异议
 - 开放日预约 2 条、系统通知若干
 """
 
@@ -103,6 +104,34 @@ def clean():
     conn.close()
 
 
+def fill_resumes():
+    """补齐演示学生个人简历（年级排名、获奖、擅长方向、意向发展方向、电话）。"""
+    rows = [
+        ("S2026001", "8/126", "蓝桥杯省赛二等奖；校级三好学生", "Python、Web 前端开发", "AI 应用开发", "13803110001"),
+        ("S2026002", "12/126", "全国大学生数学建模竞赛省二等奖", "机器学习、数据分析", "数据智能方向", "13803110002"),
+        ("S2026003", "25/124", "校级程序设计竞赛一等奖", "Java 后端、数据库设计", "全栈开发", "13803110003"),
+        ("S2026004", "5/124", "互联网+省级铜奖", "算法与数据结构、Go 后端", "智能硬件与嵌入式", "13803110004"),
+        ("S2026005", "18/122", "校级优秀学生干部", "Vue、UI 设计", "前端与交互设计", "13803110005"),
+        ("S2026006", "33/126", "蓝桥杯校赛三等奖", "C++、Linux 运维", "系统与运维", "13803110006"),
+        ("S2026007", "7/124", "全国大学生数学建模竞赛省一等奖", "Python、数据可视化", "数据智能方向", "13803110007"),
+        ("S2026008", "21/125", "校级网络技术大赛二等奖", "网络协议、网络安全", "网络与安全", "13803110008"),
+        ("S2026009", "15/123", "校级奖学金二等奖", "SQL、报表开发", "数据分析", "13803110009"),
+        ("S2026010", "29/126", "大学生创新创业训练计划校级立项", "Java、Spring Boot", "后端开发", "13803110010"),
+    ]
+    conn = db()
+    with conn.cursor() as cur:
+        for no, rank, awards, specialty, dev, phone in rows:
+            cur.execute(
+                """
+                UPDATE student SET grade_rank=%s, awards=%s, specialty=%s,
+                       dev_direction=%s, phone=%s
+                WHERE student_no=%s
+                """,
+                (rank, awards, specialty, dev, phone, no),
+            )
+    conn.close()
+
+
 def file_application(token, mentor_ids):
     status, app = api("POST", "/api/filing/applications", token,
                       {"acceptInternalAdjust": True, "acceptCrossAdjust": True})
@@ -170,6 +199,7 @@ def main():
         return 1
 
     clean()
+    fill_resumes()
     t = {name: login(name) for name in
          ("T001", "T002", "T003", "T004", "T005", "T006", "T007", "T009")}
     s = {i: login(f"S2026{i:03d}") for i in range(1, 11)}
@@ -223,10 +253,27 @@ def main():
     r_zhang = propose(intents[1][1], "综合评分靠前，拟录取")
     r_li = propose(intents[2][2], "面试表现优秀，拟录取")
     r_sun = propose(intents[7][7], "数据方向匹配度高，拟录取")
-    status, data = api("POST", f"/api/results/{r_li['resultId']}/confirm", s[2], {})
-    if status != 200:
-        raise RuntimeError(f"学生确认失败 {status} {data}")
-    print("拟录取：张伟（待确认）、李娜（已确认）、孙悦（待确认）")
+    r_zhou = propose(intents[8][8], "评分达标，拟录取")
+    for token, result, who in ((s[2], r_li, "李娜"), (s[8], r_zhou, "周涛")):
+        status, data = api("POST", f"/api/results/{result['resultId']}/confirm", token, {})
+        if status != 200:
+            raise RuntimeError(f"{who} 确认失败 {status} {data}")
+    print("拟录取：张伟（待确认）、李娜（已确认）、孙悦（待确认）、周涛（已确认）")
+
+    # ---------- 待约谈调剂 ----------
+    conn = db()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO adjustment
+              (round_id, student_id, priority_level, adjust_type, from_lab_id,
+               to_lab_id, to_mentor_id, status, operator_id, remark)
+            VALUES (4, 3, 3, 'NEGOTIATED', NULL, 2, NULL, 'PENDING', 0,
+                    '首轮未获拟录取，安排统筹约谈')
+            """
+        )
+    conn.close()
+    print("待约谈：王强 → 智能硬件实训室")
 
     # ---------- 公示与异议 ----------
     status, batch = api("POST", "/api/publicity/batches", t["T001"], {

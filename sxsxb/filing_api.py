@@ -131,6 +131,23 @@ def teacher_roles(cur, teacher_id: int) -> List[dict]:
     return cur.fetchall()
 
 
+def teacher_lab_scope(cur, teacher_id: int):
+    """教师数据可见范围：统筹岗返回全部，否则返回负责人岗位与在职导师所属实训室集合。"""
+    roles = teacher_roles(cur, teacher_id)
+    if any(r["role_code"] == "COORDINATOR" for r in roles):
+        return True, set()
+    scope_labs = {
+        r["scope_lab_id"] for r in roles
+        if r["role_code"] == "LAB_OWNER" and r["scope_lab_id"]
+    }
+    cur.execute(
+        "SELECT lab_id FROM mentor WHERE teacher_id = %s AND status = 'ACTIVE'",
+        (teacher_id,),
+    )
+    scope_labs.update(row["lab_id"] for row in cur.fetchall())
+    return False, scope_labs
+
+
 def require_lab_manager(cur, user: dict, lab_id: int) -> None:
     roles = teacher_roles(cur, user["teacher_id"])
     if any(r["role_code"] == "COORDINATOR" for r in roles):
@@ -4014,17 +4031,7 @@ def submitted_applications(user: dict = Depends(current_teacher)):
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            roles = teacher_roles(cur, user["teacher_id"])
-            is_coordinator = any(r["role_code"] == "COORDINATOR" for r in roles)
-            scope_labs = {
-                r["scope_lab_id"] for r in roles
-                if r["role_code"] == "LAB_OWNER" and r["scope_lab_id"]
-            }
-            cur.execute(
-                "SELECT lab_id FROM mentor WHERE teacher_id = %s AND status = 'ACTIVE'",
-                (user["teacher_id"],),
-            )
-            scope_labs.update(row["lab_id"] for row in cur.fetchall())
+            is_coordinator, scope_labs = teacher_lab_scope(cur, user["teacher_id"])
 
             scope_sql = ""
             params = []
@@ -4057,6 +4064,74 @@ def submitted_applications(user: dict = Depends(current_teacher)):
                          ia.accept_cross_adjust, s.student_no, s.name, s.grade, s.major,
                          r.round_name, r.round_no
                 ORDER BY ia.submitted_at DESC, ia.application_id DESC
+                """,
+                params,
+            )
+            items = cur.fetchall()
+            return {"items": items, "total": len(items)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/stats/admissions")
+def stats_admissions(status: str = "OCCUPIED", user: dict = Depends(current_teacher)):
+    """概览“待确认拟录取 / 已确认录取”点击查看：学号、姓名、专业。"""
+    if status not in ("OCCUPIED", "CONFIRMED"):
+        raise HTTPException(status_code=400, detail="状态仅支持 OCCUPIED 或 CONFIRMED")
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            is_coordinator, scope_labs = teacher_lab_scope(cur, user["teacher_id"])
+            scope_sql = ""
+            params = [status]
+            if not is_coordinator:
+                if not scope_labs:
+                    return {"items": [], "total": 0}
+                placeholders = ",".join(["%s"] * len(scope_labs))
+                scope_sql = f" AND a.lab_id IN ({placeholders})"
+                params.extend(scope_labs)
+            cur.execute(
+                f"""
+                SELECT s.student_no, s.name AS student_name, s.major,
+                       t.name AS mentor_name, l.name AS lab_name
+                FROM admission a
+                JOIN student s ON s.student_id = a.student_id
+                JOIN mentor m ON m.mentor_id = a.mentor_id
+                JOIN teacher t ON t.teacher_id = m.teacher_id
+                JOIN lab l ON l.lab_id = a.lab_id
+                WHERE a.status = %s{scope_sql}
+                ORDER BY a.updated_at DESC, a.admission_id DESC
+                """,
+                params,
+            )
+            items = cur.fetchall()
+            return {"items": items, "total": len(items)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/stats/pending-negotiations")
+def stats_pending_negotiations(user: dict = Depends(current_teacher)):
+    """概览“待约谈”点击查看：姓名、学号、专业、电话。"""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            is_coordinator, scope_labs = teacher_lab_scope(cur, user["teacher_id"])
+            scope_sql = ""
+            params = []
+            if not is_coordinator:
+                if not scope_labs:
+                    return {"items": [], "total": 0}
+                placeholders = ",".join(["%s"] * len(scope_labs))
+                scope_sql = f" AND a.to_lab_id IN ({placeholders})"
+                params = list(scope_labs)
+            cur.execute(
+                f"""
+                SELECT s.name AS student_name, s.student_no, s.major, s.phone
+                FROM adjustment a
+                JOIN student s ON s.student_id = a.student_id
+                WHERE a.status = 'PENDING'{scope_sql}
+                ORDER BY a.updated_at DESC, a.adjust_id DESC
                 """,
                 params,
             )

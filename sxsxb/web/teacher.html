@@ -338,14 +338,28 @@
       try {
         const data = await api('/api/stats/overview');
         const s = data.summary;
-        summaryBox.innerHTML = [
-          ['已提交申请', s.submitted, 'submitted'], ['待确认拟录取', s.occupied],
-          ['已确认录取', s.confirmed], ['待约谈', s.pending_negotiation],
-          ['待处理异议', s.pending_objection]
-        ].map(([label, num, action]) => `<div class="stat"${action ? ` data-stat="${action}" style="cursor:pointer" title="点击查看已提交申请"` : ''}>` +
-          `<div class="num">${num}</div><div class="lbl">${label}${action ? ' <span style="color:#2f6fed">›</span>' : ''}</div></div>`).join('');
-        const submittedCard = summaryBox.querySelector('[data-stat="submitted"]');
-        if (submittedCard) submittedCard.addEventListener('click', showSubmittedApplications);
+        const cards = [
+          ['已提交申请', s.submitted, 'submitted', '点击查看已提交申请'],
+          ['待确认拟录取', s.occupied, 'occupied', '点击查看待确认拟录取'],
+          ['已确认录取', s.confirmed, 'confirmed', '点击查看已确认录取'],
+          ['待约谈', s.pending_negotiation, 'pending_negotiation', '点击查看待约谈学生'],
+          ['待处理异议', s.pending_objection, 'pending_objection', '点击前往公示与异议']
+        ];
+        summaryBox.innerHTML = cards.map(([label, num, action, tip]) =>
+          `<div class="stat" data-stat="${action}" style="cursor:pointer" title="${tip}">` +
+          `<div class="num">${num}</div><div class="lbl">${label} <span style="color:#2f6fed">›</span></div></div>`
+        ).join('');
+        summaryBox.querySelectorAll('[data-stat]').forEach(el => {
+          el.addEventListener('click', () => {
+            const key = el.dataset.stat;
+            if (key === 'pending_objection') {
+              const btn = document.querySelector('.tab-btn[data-tab="publicity"]');
+              if (btn) btn.click();
+              return;
+            }
+            showStatDetails(key);
+          });
+        });
 
         const rows = (isCoordinator ? data.labs : data.labs.filter(l => ownedLabs.includes(l.lab_id)));
         labBox.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
@@ -360,22 +374,43 @@
       }
     }
 
-    /* 概览：点击“已提交申请”查看申请清单 */
-    async function showSubmittedApplications() {
+    /* 概览统计方框：点击查看明细（待处理异议直接跳转公示与异议） */
+    async function showStatDetails(kind) {
+      const configs = {
+        submitted: {
+          url: '/api/stats/submitted-applications', title: '已提交申请',
+          head: ['学号', '姓名', '年级', '专业', '轮次', '意向（实训室·导师）', '室内调剂', '跨室调剂', '提交时间'],
+          row: it => [it.student_no, it.student_name, it.grade || '-', it.major || '-',
+            it.round_name, it.intents, it.accept_internal_adjust ? '是' : '否',
+            it.accept_cross_adjust ? '是' : '否', fmtTime(it.submitted_at)]
+        },
+        occupied: {
+          url: '/api/stats/admissions?status=OCCUPIED', title: '待确认拟录取',
+          head: ['学号', '姓名', '专业'],
+          row: it => [it.student_no, it.student_name, it.major || '-']
+        },
+        confirmed: {
+          url: '/api/stats/admissions?status=CONFIRMED', title: '已确认录取',
+          head: ['学号', '姓名', '专业', '导师', '实训室'],
+          row: it => [it.student_no, it.student_name, it.major || '-',
+            it.mentor_name || '-', it.lab_name || '-']
+        },
+        pending_negotiation: {
+          url: '/api/stats/pending-negotiations', title: '待约谈',
+          head: ['姓名', '学号', '专业', '电话'],
+          row: it => [it.student_name, it.student_no, it.major || '-', it.phone || '-']
+        }
+      };
+      const cfg = configs[kind];
+      if (!cfg) return;
       try {
-        const data = await api('/api/stats/submitted-applications');
-        if (!data.items.length) { toast('暂无已提交申请'); return; }
-        const rows = data.items.map(it => `<tr>
-          <td>${esc(it.student_no)}</td><td>${esc(it.student_name)}</td>
-          <td>${esc(it.grade || '-')}</td><td>${esc(it.major || '-')}</td>
-          <td>${esc(it.round_name)}</td><td>${esc(it.intents)}</td>
-          <td>${it.accept_internal_adjust ? '是' : '否'}</td>
-          <td>${it.accept_cross_adjust ? '是' : '否'}</td>
-          <td>${fmtTime(it.submitted_at)}</td></tr>`).join('');
-        openModal(`<h4 class="modal-title">已提交申请（${data.total}）</h4>` +
+        const data = await api(cfg.url);
+        if (!data.items.length) { toast('暂无' + cfg.title + '数据'); return; }
+        const rows = data.items.map(it =>
+          '<tr>' + cfg.row(it).map(v => `<td>${esc(v)}</td>`).join('') + '</tr>').join('');
+        openModal(`<h4 class="modal-title">${cfg.title}（${data.total}）</h4>` +
           `<div class="table-wrap" style="max-height:55vh;overflow:auto"><table class="data">` +
-          `<thead><tr><th>学号</th><th>姓名</th><th>年级</th><th>专业</th><th>轮次</th>` +
-          `<th>意向（实训室·导师）</th><th>室内调剂</th><th>跨室调剂</th><th>提交时间</th></tr></thead>` +
+          `<thead><tr>${cfg.head.map(h => `<th>${h}</th>`).join('')}</tr></thead>` +
           `<tbody>${rows}</tbody></table></div>`, null);
       } catch (e) { toast(e.message, 'err'); }
     }
