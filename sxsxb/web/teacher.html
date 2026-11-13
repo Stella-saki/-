@@ -1,0 +1,1208 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>教师工作台 · 实训室选报系统</title>
+  <link rel="stylesheet" href="app.css?v=20261112e">
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span><span class="txt">实训室选报系统</span></div>
+    <span class="spacer"></span>
+    <div class="who" id="userBox"></div>
+    <button class="icon-btn" id="bellBtn" title="通知中心">🔔<span class="badge" id="unreadBadge" style="display:none">0</span></button>
+    <button class="btn sm ghost" id="logoutBtn" style="background:rgba(255,255,255,.14);color:#fff;border-color:transparent">退出</button>
+  </div>
+
+  <div class="container">
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="overview">概览</button>
+      <button class="tab-btn" data-tab="intents">意向与拟录取</button>
+      <button class="tab-btn" data-tab="sessions">面试场次</button>
+      <button class="tab-btn" data-tab="labs">实训室信息</button>
+      <button class="tab-btn" data-tab="adjust">统筹调剂</button>
+      <button class="tab-btn" data-tab="publicity">公示与异议</button>
+      <button class="tab-btn" data-tab="openday">开放日名单</button>
+      <button class="tab-btn" data-tab="process">阶段与轮次</button>
+    </div>
+
+    <!-- 概览 -->
+    <section class="panel active" id="panel-overview">
+      <div class="grid cols-4" id="summaryBox"></div>
+      <div class="card" style="margin-top:16px">
+        <h3>各实训室名额与报名</h3>
+        <div id="labStats"><div class="empty">加载中…</div></div>
+      </div>
+    </section>
+
+    <!-- 意向与拟录取 -->
+    <section class="panel" id="panel-intents">
+      <div class="card">
+        <h3>意向名单</h3>
+        <div class="sub">按实训室查看已提交意向，结合签到与评分发起拟录取。</div>
+        <div class="row">
+          <label class="field grow"><span>实训室</span><select id="intentLab"></select></label>
+          <label class="field grow"><span>轮次</span><select id="intentRound"><option value="">全部轮次</option></select></label>
+          <button class="btn ghost" id="intentReload">刷新</button>
+        </div>
+        <div id="intentTable"><div class="empty">请选择实训室</div></div>
+      </div>
+    </section>
+
+    <!-- 面试场次 -->
+    <section class="panel" id="panel-sessions">
+      <div class="card" id="createSessionCard">
+        <h3>创建面试场次</h3>
+        <div class="sub">排入学生时立即向学生发送面试提醒，并在面试前 1 天、2 小时各生成一次定时提醒。</div>
+        <div class="row">
+          <label class="field grow"><span>实训室</span><select id="sessLab"></select></label>
+          <label class="field grow"><span>轮次</span><select id="sessRound"></select></label>
+          <label class="field grow"><span>场次名称</span><input type="text" id="sessName" placeholder="如：第一轮面试 A 组"></label>
+          <label class="field"><span>开始</span><input type="datetime-local" id="sessStart"></label>
+          <label class="field"><span>结束</span><input type="datetime-local" id="sessEnd"></label>
+          <label class="field grow"><span>地点</span><input type="text" id="sessLocation" placeholder="如：实训楼 302"></label>
+          <button class="btn" id="sessCreate">创建场次</button>
+        </div>
+        <div style="margin-top:6px">
+          <div class="sub" style="margin-bottom:6px">面试评委（可选，可不选或稍后调整；选中者须为本实训室导师）</div>
+          <div id="sessJudges" class="row" style="gap:14px"><span class="empty" style="padding:4px">请先选择实训室</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>场次列表</h3>
+        <div id="sessionTable"><div class="empty">加载中…</div></div>
+      </div>
+      <div class="card" id="sessionDetailCard" style="display:none">
+        <h3 id="sessionDetailTitle">场次详情</h3>
+        <div id="sessionDetail"></div>
+        <div id="scoreForm" class="card" style="display:none;box-shadow:none;background:#fbfcff">
+          <h3 id="scoreTitle">评分</h3>
+          <div class="sub">评分与评语提交后仍可随时修改；仅该生所选导师（或本室负责人/统筹岗）可提交与修改。</div>
+          <div class="row">
+            <label class="field"><span>学习态度</span><input type="number" id="sLearning" min="0" max="100" value="80"></label>
+            <label class="field"><span>逻辑思维</span><input type="number" id="sLogic" min="0" max="100" value="80"></label>
+            <label class="field"><span>编程基础</span><input type="number" id="sProgramming" min="0" max="100" value="80"></label>
+            <label class="field"><span>时间投入</span><input type="number" id="sTime" min="0" max="100" value="80"></label>
+            <label class="field grow"><span>评语</span><input type="text" id="sComment" placeholder="可选"></label>
+            <button class="btn ok" id="scoreSubmit">提交评分</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 实训室信息 -->
+    <section class="panel" id="panel-labs">
+      <div class="card">
+        <h3>实训室信息</h3>
+        <div class="sub" id="labProfileTip">查看各实训室主要方向与导师简介。实训室负责人可编辑本室信息，导师可编辑本人简介，其余内容只读。</div>
+        <div id="labProfileList"><div class="empty">加载中…</div></div>
+      </div>
+    </section>
+
+    <!-- 统筹调剂 -->
+    <section class="panel" id="panel-adjust">
+      <div class="card">
+        <h3>自动调剂匹配</h3>
+        <div class="sub">按“内部调剂 → 跨实训室调剂 → 约谈”三级顺序执行，覆盖全部尚未录取的学生（含未填报有效意向者，无可用名额时转入约谈）。约谈可多轮进行，关闭调剂轮次前必须为所有学生完成安置。</div>
+        <div class="row">
+          <label class="field grow"><span>轮次</span><select id="adjRound"></select></label>
+          <button class="btn" id="adjMatch">运行自动调剂</button>
+          <button class="btn ghost" id="adjReload">刷新列表</button>
+        </div>
+        <div class="hint warn" id="adjHint" style="display:none">仅全院统筹岗可执行调剂与约谈操作。</div>
+      </div>
+      <div class="card">
+        <h3>调剂记录</h3>
+        <div id="adjTable"><div class="empty">暂无记录</div></div>
+      </div>
+      <div class="card" id="negotiateCard" style="display:none">
+        <h3>约谈记录</h3>
+        <div class="sub" style="margin-bottom:6px">拒绝不作为终态：同一条记录可多次约谈，直至学生落实实训室；调剂轮次关闭前必须为所有学生完成安置。</div>
+        <div class="row">
+          <label class="field"><span>约谈结论</span>
+            <select id="negConclusion">
+              <option value="ACCEPT">接受调剂</option>
+              <option value="REJECT">拒绝调剂</option>
+            </select>
+          </label>
+          <label class="field grow"><span>最终实训室</span><select id="negLab"></select></label>
+          <label class="field"><span>约谈方式</span>
+            <select id="negMethod">
+              <option value="FACE_TO_FACE">面谈</option>
+              <option value="PHONE">电话</option>
+              <option value="ONLINE">线上</option>
+            </select>
+          </label>
+          <label class="field"><span>学生意愿</span>
+            <select id="negWillingness">
+              <option value="ACCEPT">愿意</option>
+              <option value="HESITATE">犹豫</option>
+              <option value="REJECT">不愿意</option>
+            </select>
+          </label>
+          <label class="field grow"><span>备注</span><input type="text" id="negRemark" placeholder="约谈情况说明"></label>
+          <button class="btn" id="negSubmit">提交结论</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 公示与异议 -->
+    <section class="panel" id="panel-publicity">
+      <div class="card">
+        <h3>发布公示批次</h3>
+        <div class="sub">系统会自动收录该轮次有效录取结果，并通知学生。</div>
+        <div class="row">
+          <label class="field grow"><span>轮次</span><select id="pubRound"></select></label>
+          <label class="field"><span>公示开始</span><input type="datetime-local" id="pubStart"></label>
+          <label class="field"><span>公示结束</span><input type="datetime-local" id="pubEnd"></label>
+          <label class="field grow"><span>备注</span><input type="text" id="pubRemark" placeholder="可选"></label>
+          <button class="btn" id="pubCreate">发布公示</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>公示批次</h3>
+        <div id="pubTable"><div class="empty">加载中…</div></div>
+        <div id="pubDetail" style="margin-top:12px"></div>
+      </div>
+      <div class="card">
+        <h3>学生异议处理</h3>
+        <div class="row">
+          <label class="field"><span>状态筛选</span>
+            <select id="objStatus">
+              <option value="">全部</option>
+              <option value="PENDING">待处理</option>
+              <option value="PROCESSING">处理中</option>
+              <option value="RESOLVED">已解决</option>
+              <option value="REJECTED">已驳回</option>
+            </select>
+          </label>
+          <button class="btn ghost" id="objReload">刷新</button>
+        </div>
+        <div id="objTable"><div class="empty">暂无异议</div></div>
+      </div>
+    </section>
+
+    <!-- 开放日名单 -->
+    <section class="panel" id="panel-openday">
+      <div class="card">
+        <h3>开放日预约名单</h3>
+        <div class="row">
+          <label class="field grow"><span>实训室</span><select id="odLabFilter"><option value="">全部</option></select></label>
+          <label class="field"><span>日期</span><input type="date" id="odDateFilter"></label>
+          <button class="btn ghost" id="odReload">查询</button>
+        </div>
+        <div id="odTable"><div class="empty">暂无预约</div></div>
+      </div>
+    </section>
+
+    <!-- 阶段与轮次 -->
+    <section class="panel" id="panel-process">
+      <div class="card">
+        <h3>选拔阶段</h3>
+        <div class="sub">阶段与轮次可随时手动开关，不受时间窗限制；开启新轮次会自动收起其它填报中的轮次，自动释放此前轮次所有未确认名额，并撤销此前轮次尚未评分的面试场次。关闭轮次时：仅 1 个拟录取自动确认，2~3 个发送确认提醒，30 分钟未确认自动释放名额并进入补录。</div>
+        <div id="stageTable"><div class="empty">加载中…</div></div>
+      </div>
+      <div class="card">
+        <h3>轮次管理</h3>
+        <div id="roundTable"><div class="empty">加载中…</div></div>
+      </div>
+      <div class="card">
+        <h3>运维操作</h3>
+        <div class="row">
+          <button class="btn ghost" id="dispatchReminders">立即派发面试提醒</button>
+          <button class="btn ghost" id="autoConfirm">批量自动确认到期结果</button>
+          <button class="btn danger" id="releaseExpired">释放超时未确认名额</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="common.js?v=20261112e"></script>
+  <script>
+    const user = requireUser('TEACHER');
+    const roles = (user && user.roles) || [];
+    const isCoordinator = roles.some(r => r.roleCode === 'COORDINATOR');
+    const ownedLabs = roles.filter(r => r.roleCode === 'LAB_OWNER').map(r => r.scopeLabId);
+    const mentorLabs = roles.filter(r => r.roleCode === 'MENTOR').map(r => r.scopeLabId);
+    const state = { labs: [], rounds: [], currentSession: null, scoreTarget: null };
+
+    const STATUS_TEXT = {
+      PLANNED: ['待进行', 'gray'], OPEN: ['进行中', 'green'], CLOSED: ['已结束', 'gray'],
+      EARLY_CLOSED: ['提前结束', 'orange'], FILLING: ['填报中', 'green'],
+      INTERVIEWING: ['面试中', 'orange'], CONFIRMING: ['确认中', 'orange'],
+      PUBLISHING: ['公示中', 'orange'], FINISHED: ['已结束', 'gray'],
+      DRAFT: ['草稿', 'gray'], SUBMITTED: ['已提交', 'blue'],
+      OCCUPIED: ['待确认', 'orange'], CONFIRMED: ['已确认', 'green'],
+      EFFECTIVE: ['已生效', 'green'], ENROLLED: ['已入组', 'green'],
+      RELEASED: ['已释放', 'gray'], ABANDONED: ['已放弃', 'red'],
+      CHECKED_IN: ['已签到', 'green'], NOT_CHECKED_IN: ['未签到', 'gray'], ABSENT: ['缺考', 'red'],
+      MATCHED: ['已匹配', 'green'], PENDING: ['待处理', 'orange'],
+      PROCESSING: ['处理中', 'blue'], RESOLVED: ['已解决', 'green'], REJECTED: ['已驳回', 'red'],
+      RESERVED: ['已预约', 'blue'], CANCELED: ['已取消', 'gray'],
+      INTERNAL: ['内部调剂', 'blue'], CROSS: ['跨室调剂', 'orange'], NEGOTIATED: ['约谈', 'gray'],
+      SENT: ['已发送', 'green'], FAILED: ['发送失败', 'red'], CANCELED_REMIND: ['已取消', 'gray'],
+      FIRST: ['首轮', 'gray'], SECOND: ['第二轮', 'gray'], THIRD: ['第三轮', 'gray'], ADJUST: ['统筹调剂', 'gray']
+    };
+
+    function pill(status) {
+      const item = STATUS_TEXT[status] || [status || '-', 'gray'];
+      return '<span class="pill ' + item[1] + '">' + esc(item[0]) + '</span>';
+    }
+
+    function allowedLabs() {
+      if (isCoordinator) return state.labs;
+      const mine = Array.from(new Set([...ownedLabs, ...mentorLabs]));
+      return state.labs.filter(l => mine.includes(l.lab_id));
+    }
+
+    function fillLabSelect(el, includeAll) {
+      const labs = allowedLabs();
+      const opts = labs.map(l => `<option value="${l.lab_id}">${esc(l.name)}</option>`).join('');
+      el.innerHTML = (includeAll ? '<option value="">全部实训室</option>' : '') + opts;
+    }
+
+    function fillRoundSelect(el, includeAll, onlyType, keepAll) {
+      const list = onlyType ? state.rounds.filter(r => r.round_type === onlyType) : state.rounds;
+      const opts = list.map(r => `<option value="${r.round_id}">${esc(r.round_name)}</option>`).join('');
+      el.innerHTML = (includeAll ? '<option value="">全部轮次</option>' : '') + opts;
+      if (list.length && !keepAll) el.value = String(list[list.length - 1].round_id);
+    }
+
+    /* 系统当前轮次：优先进行中状态，其次按填报开始时间取最近一轮 */
+    function currentRoundId() {
+      const activeStatuses = ['FILLING', 'INTERVIEWING', 'CONFIRMING', 'PUBLISHING'];
+      const active = state.rounds.filter(r => activeStatuses.includes(r.status));
+      if (active.length) return String(active[active.length - 1].round_id);
+      const now = Date.now();
+      const started = state.rounds.filter(r => {
+        const t = new Date(String(r.fill_start).replace(' ', 'T')).getTime();
+        return !isNaN(t) && t <= now;
+      });
+      return started.length ? String(started[started.length - 1].round_id) : '';
+    }
+
+    /* 创建面试场次的轮次随系统当前轮次同步 */
+    async function syncSessionRound() {
+      try {
+        const data = await api('/api/rounds');
+        state.rounds = data.items;
+        const sel = document.getElementById('sessRound');
+        fillRoundSelect(sel);
+        const cur = currentRoundId();
+        if (cur) sel.value = cur;
+      } catch (e) { /* 刷新失败时沿用已有选项 */ }
+    }
+
+    async function loadBase() {
+      const [labs, rounds] = await Promise.all([api('/api/labs'), api('/api/rounds')]);
+      state.labs = labs.items;
+      state.rounds = rounds.items;
+      fillLabSelect(document.getElementById('intentLab'));
+      fillLabSelect(document.getElementById('sessLab'));
+      fillLabSelect(document.getElementById('odLabFilter'), true);
+      fillLabSelect(document.getElementById('negLab'));
+      fillRoundSelect(document.getElementById('intentRound'), true, null, true);
+      fillRoundSelect(document.getElementById('sessRound'));
+      const currentRound = currentRoundId();
+      if (currentRound) document.getElementById('sessRound').value = currentRound;
+      fillRoundSelect(document.getElementById('adjRound'), false, 'ADJUST');
+      fillRoundSelect(document.getElementById('pubRound'));
+    }
+
+    /* 顶栏显示所属实训室与本人剩余录取名额 */
+    async function renderUserLabInfo() {
+      const who = document.getElementById('userBox');
+      if (!who) return;
+      let items = [];
+      try {
+        const data = await api('/api/teachers/me/duty');
+        items = data.items || [];
+      } catch (e) { return; }
+      items.forEach(item => {
+        const text = item.remaining === null || item.remaining === undefined
+          ? `${item.lab_name} · 本人名额不限`
+          : `${item.lab_name} · 本人剩余名额 ${item.remaining}/${item.capacity}`;
+        const chip = document.createElement('span');
+        chip.className = 'role-tag';
+        chip.title = '本人剩余录取名额（可带人数 - 已占名额）';
+        chip.textContent = text;
+        who.appendChild(chip);
+      });
+    }
+
+    /* ---------------- 概览 ---------------- */
+    async function loadStats() {
+      const summaryBox = document.getElementById('summaryBox');
+      const labBox = document.getElementById('labStats');
+      try {
+        const data = await api('/api/stats/overview');
+        const s = data.summary;
+        summaryBox.innerHTML = [
+          ['已提交申请', s.submitted, 'submitted'], ['待确认拟录取', s.occupied],
+          ['已确认录取', s.confirmed], ['待约谈', s.pending_negotiation],
+          ['待处理异议', s.pending_objection]
+        ].map(([label, num, action]) => `<div class="stat"${action ? ` data-stat="${action}" style="cursor:pointer" title="点击查看已提交申请"` : ''}>` +
+          `<div class="num">${num}</div><div class="lbl">${label}${action ? ' <span style="color:#2f6fed">›</span>' : ''}</div></div>`).join('');
+        const submittedCard = summaryBox.querySelector('[data-stat="submitted"]');
+        if (submittedCard) submittedCard.addEventListener('click', showSubmittedApplications);
+
+        const rows = (isCoordinator ? data.labs : data.labs.filter(l => ownedLabs.includes(l.lab_id)));
+        labBox.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
+          '<th>编号</th><th>实训室</th><th>名额</th><th>已占用</th><th>剩余</th><th>报名人数</th><th>场次数</th><th>待参观预约</th></tr></thead><tbody>' +
+          rows.map(l => `<tr><td>${esc(l.lab_code)}</td><td>${esc(l.lab_name)}</td>
+            <td>${l.quota}</td><td>${l.occupied}</td>
+            <td>${l.quota - l.occupied}</td><td>${l.applicants}</td>
+            <td>${l.session_count}</td><td>${l.reservations}</td></tr>`).join('') +
+          '</tbody></table></div>';
+      } catch (e) {
+        summaryBox.innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+      }
+    }
+
+    /* 概览：点击“已提交申请”查看申请清单 */
+    async function showSubmittedApplications() {
+      try {
+        const data = await api('/api/stats/submitted-applications');
+        if (!data.items.length) { toast('暂无已提交申请'); return; }
+        const rows = data.items.map(it => `<tr>
+          <td>${esc(it.student_no)}</td><td>${esc(it.student_name)}</td>
+          <td>${esc(it.grade || '-')}</td><td>${esc(it.major || '-')}</td>
+          <td>${esc(it.round_name)}</td><td>${esc(it.intents)}</td>
+          <td>${it.accept_internal_adjust ? '是' : '否'}</td>
+          <td>${it.accept_cross_adjust ? '是' : '否'}</td>
+          <td>${fmtTime(it.submitted_at)}</td></tr>`).join('');
+        openModal(`<h4 class="modal-title">已提交申请（${data.total}）</h4>` +
+          `<div class="table-wrap" style="max-height:55vh;overflow:auto"><table class="data">` +
+          `<thead><tr><th>学号</th><th>姓名</th><th>年级</th><th>专业</th><th>轮次</th>` +
+          `<th>意向（实训室·导师）</th><th>室内调剂</th><th>跨室调剂</th><th>提交时间</th></tr></thead>` +
+          `<tbody>${rows}</tbody></table></div>`, null);
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    /* ---------------- 意向 ---------------- */
+    /* 与“阶段与轮次-轮次管理”保持同一份轮次数据（同名同序） */
+    async function refreshIntentRounds() {
+      const el = document.getElementById('intentRound');
+      const current = el.value;
+      const data = await api('/api/rounds');
+      state.rounds = data.items;
+      el.innerHTML = '<option value="">全部轮次</option>' +
+        data.items.map(r => `<option value="${r.round_id}">${esc(r.round_name)}</option>`).join('');
+      el.value = current && data.items.some(r => String(r.round_id) === current) ? current : '';
+    }
+
+    async function loadIntentsWithRounds() {
+      try { await refreshIntentRounds(); } catch (e) { /* 轮次刷新失败时沿用已有选项 */ }
+      loadIntents();
+    }
+
+    async function loadIntents() {
+      const box = document.getElementById('intentTable');
+      const labId = document.getElementById('intentLab').value;
+      if (!labId) { box.innerHTML = '<div class="empty">请选择实训室</div>'; return; }
+      const roundId = document.getElementById('intentRound').value;
+      box.innerHTML = '<div class="empty">加载中…</div>';
+      try {
+        const data = await api('/api/labs/' + labId + '/intents' +
+          (roundId ? '?roundId=' + roundId : ''));
+        if (!data.items.length) { box.innerHTML = '<div class="empty">暂无意向</div>'; return; }
+        box.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
+          '<th>意向ID</th><th>学号</th><th>姓名</th><th>导师</th><th>轮次</th><th>状态</th><th>签到</th>' +
+          '<th>均分</th><th>评委数</th><th>操作</th></tr></thead><tbody>' +
+          data.items.map(i => `<tr>
+            <td>${i.intent_id}</td>
+            <td>${esc(i.student_no)}</td><td>${esc(i.student_name)}</td>
+            <td>${esc(i.mentor_name)}</td><td>${esc(i.round_name)}</td>
+            <td>${pill(i.status)}</td>
+            <td>${i.checkin_status ? pill(i.checkin_status) : '-'}</td>
+            <td>${i.avg_total === null ? '-' : i.avg_total}</td>
+            <td>${i.judge_count || 0}</td>
+            <td>${i.proposed ? '<span class="pill green">已拟录取</span>' :
+              `<button class="btn sm propose-btn" data-intent="${i.intent_id}"
+                data-name="${esc(i.student_name)}"
+                ${i.checkin_status === 'CHECKED_IN' && i.avg_total !== null ? '' : 'disabled'}>拟录取</button>`}</td>
+          </tr>`).join('') + '</tbody></table></div>';
+
+        box.querySelectorAll('.propose-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!await askConfirm('确认为 ' + btn.dataset.name + ' 发起拟录取吗？')) return;
+            try {
+              await api('/api/results/propose', {
+                method: 'POST',
+                body: { intentId: Number(btn.dataset.intent), remark: '面试综合评定' }
+              });
+              toast('拟录取已发起，学生将收到确认通知', 'ok');
+              loadIntents();
+            } catch (e) { toast(e.message, 'err'); }
+          });
+        });
+      } catch (e) {
+        box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+      }
+    }
+
+    /* ---------------- 面试场次 ---------------- */
+    async function loadSessions() {
+      const box = document.getElementById('sessionTable');
+      try {
+        const items = await api('/api/interview/sessions');
+        const visibleLabs = new Set(allowedLabs().map(l => l.lab_id));
+        const rows = isCoordinator ? items : items.filter(s => visibleLabs.has(s.lab_id));
+        if (!rows.length) { box.innerHTML = '<div class="empty">暂无场次</div>'; return; }
+        box.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
+          '<th>场次</th><th>轮次</th><th>实训室</th><th>时间</th><th>地点</th><th>学生数</th><th>评委数</th><th>状态</th><th>操作</th></tr></thead><tbody>' +
+          rows.map(s => `<tr>
+            <td>${esc(s.session_name || ('#' + s.session_id))}</td>
+            <td>${esc(s.round_name || (s.round_no ? '第 ' + s.round_no + ' 轮' : '-'))}</td>
+            <td>${esc(s.lab_name)}</td>
+            <td>${fmtTime(s.start_time)} ~ ${fmtTime(s.end_time)}</td>
+            <td>${esc(s.location || '-')}</td>
+            <td>${s.participant_count}</td><td>${s.judge_count}</td>
+            <td>${pill(s.status)}</td>
+            <td><button class="btn sm ghost detail-btn" data-id="${s.session_id}">详情</button>
+              ${s.status === 'CANCELED' ? '' :
+                `<button class="btn sm danger cancel-btn" data-id="${s.session_id}">撤销</button>`}
+            </td>
+          </tr>`).join('') + '</tbody></table></div>';
+
+        box.querySelectorAll('.detail-btn').forEach(btn => {
+          btn.addEventListener('click', () => loadSessionDetail(Number(btn.dataset.id)));
+        });
+        box.querySelectorAll('.cancel-btn').forEach(btn => {
+          btn.addEventListener('click', () => cancelSession(Number(btn.dataset.id)));
+        });
+      } catch (e) {
+        box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+      }
+    }
+
+    async function cancelSession(id) {
+      if (!await askConfirm('撤销后该场次的排期、评委与提醒将被清除，学生需重新排期；已有评分记录的场次不可撤销。确定撤销吗？')) return;
+      try {
+        await api('/api/interview/sessions/' + id + '/cancel', { method: 'POST' });
+        toast('场次已撤销', 'ok');
+        if (state.currentSession === id) {
+          state.currentSession = null;
+          state.session = null;
+          document.getElementById('sessionDetailCard').style.display = 'none';
+        }
+        loadSessions();
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    async function loadSessionDetail(id) {
+      state.currentSession = id;
+      document.getElementById('sessionDetailCard').style.display = '';
+      document.getElementById('sessionDetail').innerHTML = '<div class="empty">加载中…</div>';
+      try {
+        const [s, scoreData] = await Promise.all([
+          api('/api/interview/sessions/' + id),
+          api('/api/interview/sessions/' + id + '/scores')
+        ]);
+        document.getElementById('sessionDetailTitle').textContent =
+          (s.session_name || ('场次 #' + s.session_id)) + ' · ' + s.lab_name;
+        state.session = s;
+        const scoreMap = {};
+        scoreData.items.forEach(i => { scoreMap[i.intent_id] = i; });
+
+        const canManage = isCoordinator || ownedLabs.includes(s.lab_id);
+        document.getElementById('sessionDetail').innerHTML = `
+          <div class="row" style="gap:22px;font-size:13px;color:#5b6784;margin-bottom:10px">
+            <span>时间：${fmtTime(s.start_time)} ~ ${fmtTime(s.end_time)}</span>
+            <span>地点：${esc(s.location || '待定')}</span>
+            <span>状态：${pill(s.status)}</span>
+            <span>评委：${s.judges.map(j => esc(j.teacher_name)).join('、') || '未指定'}</span>
+            <span>评分要求：至少 1 名评委给出评分即可拟录取</span>
+            <span class="hint-inline">签到与评分仅学生所选导师（或本室负责人/统筹岗）可操作，排人时自动将所选导师设为评委</span>
+            ${canManage ? '<button class="btn sm ghost" id="assignBtn">排入学生</button>' : ''}
+            ${canManage && s.status !== 'CANCELED' ?
+              '<button class="btn sm danger" id="cancelSessionBtn">撤销场次</button>' : ''}
+          </div>
+          <div class="table-wrap"><table class="data"><thead><tr>
+            <th>学号</th><th>姓名</th><th>导师</th><th>签到</th><th>已评人数</th><th>平均分</th><th>我的评分</th><th>操作</th>
+          </tr></thead><tbody>
+          ${s.participants.length ? s.participants.map(p => {
+            const sc = scoreMap[p.intent_id] || {};
+            const checkedIn = p.checkin_status === 'CHECKED_IN';
+            return `<tr>
+              <td>${esc(p.student_no)}</td>
+              <td>${esc(p.student_name)}<div><a href="javascript:;" class="profile-link" data-student="${p.student_id}" style="font-size:12px;color:#2f6fed">详情</a></div></td>
+              <td>${esc(sc.mentor_name || p.mentor_name || '-')} <span class="pill gray">意向#${p.parallel_no ?? '-'}</span></td>
+              <td>${pill(p.checkin_status)}</td>
+              <td>${sc.judge_count || 0}</td>
+              <td>${sc.avg_total === null || sc.avg_total === undefined ? '-' : sc.avg_total}</td>
+              <td>${sc.myScore ? sc.myScore.total_score : '-'}</td>
+              <td>
+                ${checkedIn ? '<span class="pill green">已签到</span>' :
+                  `<button class="btn sm ok checkin-btn" data-student="${p.student_id}" data-intent="${p.intent_id}">签到</button>`}
+                <button class="btn sm danger absent-btn" data-student="${p.student_id}" data-intent="${p.intent_id}">缺考</button>
+                <button class="btn sm ghost score-btn" data-student="${p.student_id}" data-intent="${p.intent_id}"
+                  data-name="${esc(p.student_name)}" ${checkedIn ? '' : 'disabled'}>${sc.myScore ? '修改评分' : '评分'}</button>
+              </td>
+            </tr>`;
+          }).join('') : '<tr><td colspan="8" class="empty">本场次暂无学生</td></tr>'}
+          </tbody></table></div>`;
+
+        const detail = document.getElementById('sessionDetail');
+        const assignBtn = document.getElementById('assignBtn');
+        if (assignBtn) assignBtn.addEventListener('click', assignParticipants);
+        const cancelBtn = document.getElementById('cancelSessionBtn');
+        if (cancelBtn) cancelBtn.addEventListener('click', () => cancelSession(id));
+        detail.querySelectorAll('.checkin-btn').forEach(btn => {
+          btn.addEventListener('click', () => setCheckin(btn.dataset.student, 'CHECKED_IN', btn.dataset.intent));
+        });
+        detail.querySelectorAll('.absent-btn').forEach(btn => {
+          btn.addEventListener('click', () => setCheckin(btn.dataset.student, 'ABSENT', btn.dataset.intent));
+        });
+        detail.querySelectorAll('.score-btn').forEach(btn => {
+          const it = scoreMap[Number(btn.dataset.intent)] || {};
+          btn.addEventListener('click', () => openScoreForm(
+            Number(btn.dataset.student), btn.dataset.name, Number(btn.dataset.intent), it.myScore));
+        });
+        detail.querySelectorAll('.profile-link').forEach(link => {
+          link.addEventListener('click', () => showStudentProfile(Number(link.dataset.student)));
+        });
+      } catch (e) {
+        document.getElementById('sessionDetail').innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+      }
+    }
+
+    /* 查看学生注册时填写的个人简历 */
+    async function showStudentProfile(studentId) {
+      try {
+        const p = await api('/api/interview/sessions/' + state.currentSession +
+          '/students/' + studentId + '/profile');
+        const rows = [
+          ['学号', p.student_no], ['姓名', p.name], ['性别', p.gender],
+          ['年级', p.grade], ['专业', p.major], ['手机号', p.phone],
+          ['年级排名', p.grade_rank], ['获奖情况', p.awards], ['擅长方向', p.specialty],
+          ['意向发展方向', p.dev_direction]
+        ].map(([k, v]) => `<tr><th style="text-align:left;white-space:nowrap;color:#5b6784;padding:6px 12px 6px 0">${k}</th>` +
+          `<td style="padding:6px 0;white-space:pre-wrap">${esc(v || '未填写')}</td></tr>`).join('');
+        openModal(`<h4 class="modal-title">个人简历 · ${esc(p.name)}</h4>` +
+          `<div class="table-wrap" style="max-height:50vh;overflow:auto"><table>${rows}</table></div>`, null);
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    async function setCheckin(studentId, status, intentId) {
+      try {
+        await api('/api/interview/sessions/' + state.currentSession + '/checkin', {
+          method: 'POST',
+          body: { studentId: Number(studentId), intentId: Number(intentId), status }
+        });
+        toast(status === 'CHECKED_IN' ? '已签到' : '已标记缺考', 'ok');
+        loadSessionDetail(state.currentSession);
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    function openScoreForm(studentId, name, intentId, mine) {
+      state.scoreTarget = { studentId, intentId, editing: !!mine };
+      const set = (id, value) => { document.getElementById(id).value = value; };
+      set('sLearning', mine ? mine.learning_score : 80);
+      set('sLogic', mine ? mine.logic_score : 80);
+      set('sProgramming', mine ? mine.programming_score : 80);
+      set('sTime', mine ? mine.time_score : 80);
+      set('sComment', mine && mine.comment ? mine.comment : '');
+      document.getElementById('scoreForm').style.display = '';
+      document.getElementById('scoreTitle').textContent =
+        (mine ? '修改对 ' : '为 ') + name + (mine ? ' 的评分（已提交，可继续修改）' : ' 评分');
+    }
+
+    async function submitScore() {
+      if (!state.scoreTarget) return;
+      const num = id => Number(document.getElementById(id).value);
+      try {
+        await api('/api/interview/sessions/' + state.currentSession + '/scores', {
+          method: 'POST',
+          body: {
+            studentId: state.scoreTarget.studentId,
+            intentId: state.scoreTarget.intentId,
+            learningScore: num('sLearning'),
+            logicScore: num('sLogic'),
+            programmingScore: num('sProgramming'),
+            timeScore: num('sTime'),
+            comment: document.getElementById('sComment').value.trim() || null
+          }
+        });
+        toast(state.scoreTarget.editing ? '评分与评语已更新' : '评分已提交', 'ok');
+        state.scoreTarget = null;
+        document.getElementById('scoreForm').style.display = 'none';
+        loadSessionDetail(state.currentSession);
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    async function loadJudges() {
+      const box = document.getElementById('sessJudges');
+      const labId = document.getElementById('sessLab').value;
+      if (!labId) { box.innerHTML = '<span class="empty" style="padding:4px">请先选择实训室</span>'; return; }
+      box.innerHTML = '<span class="empty" style="padding:4px">加载中…</span>';
+      try {
+        const data = await api('/api/labs/' + labId + '/mentors');
+        if (!data.items.length) {
+          box.innerHTML = '<span class="empty" style="padding:4px">该实训室暂无可选导师</span>';
+          return;
+        }
+        box.innerHTML = data.items.map(m => `
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#33406a">
+            <input type="checkbox" class="judge-cb" value="${m.teacher_id}"> ${esc(m.teacher_name)}
+          </label>`).join('');
+      } catch (e) {
+        box.innerHTML = '<span class="empty" style="padding:4px">' + esc(e.message) + '</span>';
+      }
+    }
+
+    async function createSession() {
+      const labId = Number(document.getElementById('sessLab').value);
+      const roundId = Number(document.getElementById('sessRound').value);
+      const startTime = document.getElementById('sessStart').value;
+      const endTime = document.getElementById('sessEnd').value;
+      const judgeTeacherIds = Array.from(document.querySelectorAll('.judge-cb:checked'))
+        .map(cb => Number(cb.value));
+      if (!labId || !roundId) { toast('请选择实训室与轮次', 'err'); return; }
+      if (!startTime || !endTime) { toast('请填写开始与结束时间', 'err'); return; }
+      try {
+        await api('/api/interview/sessions', {
+          method: 'POST',
+          body: {
+            labId, roundId,
+            sessionName: document.getElementById('sessName').value.trim() || null,
+            startTime, endTime,
+            location: document.getElementById('sessLocation').value.trim() || null,
+            judgeTeacherIds
+          }
+        });
+        toast('场次已创建，可在详情中排入学生', 'ok');
+        loadSessions();
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    /* 排人弹窗：列出本室意向供勾选，同时保留意向ID输入框 */
+    function pickParticipants(items, sessionId) {
+      return new Promise(resolve => {
+        const rows = items.map(it => {
+          const inSession = it.session_id === sessionId;
+          const otherSession = it.session_id && it.session_id !== sessionId;
+          const disabled = inSession || it.status === 'DRAFT';
+          const tags = [];
+          if (inSession) tags.push('<span class="pill green">已在本场</span>');
+          else if (otherSession) tags.push('<span class="pill">已排场次#' + it.session_id + '</span>');
+          if (it.status === 'DRAFT') tags.push('<span class="pill warn">未提交</span>');
+          if (it.proposed) tags.push('<span class="pill">已拟录取</span>');
+          if (it.avg_total !== null && it.avg_total !== undefined) {
+            tags.push('<span class="pill">均分 ' + it.avg_total + '</span>');
+          }
+          return `<label class="pick-item${disabled ? ' disabled' : ''}">
+            <input type="checkbox" class="pick-cb" value="${it.intent_id}" ${disabled ? 'disabled' : ''}>
+            <span class="pick-main">
+              <span class="pick-name">${esc(it.student_name)} <em>${esc(it.student_no)}</em></span>
+              <span class="pick-meta">导师：${esc(it.mentor_name)} · 意向#${it.intent_id} · 第${it.parallel_no}意向</span>
+            </span>
+            <span class="pick-tags">${tags.join('')}</span>
+          </label>`;
+        }).join('') || '<div class="empty">本室该轮次暂无意向</div>';
+
+        const mask = document.createElement('div');
+        mask.className = 'modal-mask';
+        mask.innerHTML = `<div class="modal-box wide">
+          <h4 class="modal-title">排入面试学生</h4>
+          <div class="modal-msg">勾选下方学生即可排入本场次；也可在底部输入框补充意向ID。都不选则自动排入。</div>
+          <div class="pick-list">${rows}</div>
+          <div class="pick-manual">
+            <input class="modal-input" id="pickManual" placeholder="补充意向ID，多个用逗号分隔，如 12,15,18">
+          </div>
+          <div class="modal-actions">
+            <button class="btn ghost" data-act="cancel">取消</button>
+            <button class="btn" data-act="ok">确定排入</button>
+          </div>
+        </div>`;
+        document.body.appendChild(mask);
+        const close = val => {
+          mask.remove();
+          document.removeEventListener('keydown', onKey);
+          resolve(val);
+        };
+        const collect = () => {
+          const picked = Array.from(mask.querySelectorAll('.pick-cb:checked')).map(cb => Number(cb.value));
+          const manual = mask.querySelector('#pickManual').value
+            .split(/[,，\s]+/).filter(Boolean).map(Number).filter(n => !isNaN(n));
+          return Array.from(new Set([...picked, ...manual]));
+        };
+        const onKey = e => { if (e.key === 'Escape') close(null); };
+        document.addEventListener('keydown', onKey);
+        mask.addEventListener('click', e => { if (e.target === mask) close(null); });
+        mask.querySelector('[data-act="cancel"]').addEventListener('click', () => close(null));
+        mask.querySelector('[data-act="ok"]').addEventListener('click', () => close(collect()));
+      });
+    }
+
+    async function assignParticipants() {
+      const s = state.session;
+      if (!s) { toast('请先打开场次详情', 'err'); return; }
+      let items = [];
+      try {
+        const data = await api('/api/labs/' + s.lab_id + '/intents?roundId=' + s.round_id);
+        items = data.items;
+      } catch (e) { toast(e.message, 'err'); return; }
+      const ids = await pickParticipants(items, s.session_id);
+      if (ids === null) return;
+      try {
+        const res = await api('/api/interview/sessions/' + state.currentSession + '/participants', {
+          method: 'POST',
+          body: ids.length ? { intentIds: ids, auto: false } : { auto: true }
+        });
+        const base = ids.length ? ('已排入 ' + res.added + ' 名学生') : ('已按剩余意向自动排入 ' + res.added + ' 名学生');
+        toast(base + (res.notified ? '，已向 ' + res.notified + ' 名学生发送面试提醒' : ''), 'ok');
+        loadSessionDetail(state.currentSession);
+        loadSessions();
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    /* ---------------- 调剂 ---------------- */
+    async function loadAdjustments() {
+      const box = document.getElementById('adjTable');
+      const roundId = document.getElementById('adjRound').value;
+      try {
+        const data = await api('/api/adjustments' + (roundId ? '?roundId=' + roundId : ''));
+        if (!data.items.length) { box.innerHTML = '<div class="empty">暂无调剂记录</div>'; return; }
+        box.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
+          '<th>学号</th><th>姓名</th><th>等级</th><th>类型</th><th>转入实训室</th><th>状态</th><th>备注</th><th>操作</th></tr></thead><tbody>' +
+          data.items.map(a => `<tr>
+            <td>${esc(a.student_no)}</td><td>${esc(a.student_name)}</td>
+            <td>${a.priority_level}</td><td>${pill(a.adjust_type)}</td>
+            <td>${a.to_lab_id ? esc(a.to_lab_id) : '-'}</td>
+            <td>${pill(a.status)}</td><td>${esc(a.remark || '-')}</td>
+            <td>${a.status === 'PENDING' && isCoordinator ?
+              `<button class="btn sm negotiate-btn" data-id="${a.adjust_id}">约谈记录</button>` : '—'}</td>
+          </tr>`).join('') + '</tbody></table></div>';
+
+        box.querySelectorAll('.negotiate-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.adjustId = Number(btn.dataset.id);
+            document.getElementById('negotiateCard').style.display = '';
+            document.getElementById('negotiateCard').scrollIntoView({ behavior: 'smooth' });
+          });
+        });
+      } catch (e) {
+        box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+      }
+    }
+
+    async function runMatch() {
+      const roundId = Number(document.getElementById('adjRound').value);
+      if (!roundId) { toast('当前没有可用的统筹调剂轮次', 'err'); return; }
+      if (!await askConfirm('将在统筹调剂轮次内按三级顺序自动匹配全部未录取学生，确定执行吗？')) return;
+      try {
+        const r = await api('/api/adjustments/match', { method: 'POST', body: { roundId } });
+        toast(`匹配完成：候选 ${r.candidates}，成功 ${r.matched}，待约谈 ${r.pendingNegotiation}`, 'ok');
+        loadAdjustments();
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    async function submitNegotiation() {
+      if (!state.adjustId) return;
+      const conclusion = document.getElementById('negConclusion').value;
+      const body = {
+        method: document.getElementById('negMethod').value,
+        willingness: document.getElementById('negWillingness').value,
+        conclusion,
+        finalLabId: Number(document.getElementById('negLab').value) || null,
+        remark: document.getElementById('negRemark').value.trim() || null
+      };
+      if (conclusion === 'ACCEPT' && !body.finalLabId) {
+        toast('接受调剂需指定最终实训室', 'err');
+        return;
+      }
+      try {
+        const r = await api('/api/adjustments/' + state.adjustId + '/negotiate', { method: 'POST', body });
+        toast(conclusion === 'ACCEPT' ? '已安置并自动确认录取' : '已记录本次约谈，学生仍待安置，可继续约谈', 'ok');
+        document.getElementById('negotiateCard').style.display = 'none';
+        state.adjustId = null;
+        loadAdjustments();
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    /* ---------------- 公示与异议 ---------------- */
+    async function loadPublicity() {
+      const box = document.getElementById('pubTable');
+      try {
+        const data = await api('/api/publicity/batches');
+        if (!data.items.length) { box.innerHTML = '<div class="empty">暂无公示批次</div>'; return; }
+        box.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
+          '<th>批次号</th><th>轮次</th><th>公示期</th><th>条目数</th><th>状态</th><th>操作</th></tr></thead><tbody>' +
+          data.items.map(b => `<tr>
+            <td>${esc(b.batch_no)}</td><td>${esc(b.round_name || '-')}</td>
+            <td>${fmtTime(b.start_time)} ~ ${fmtTime(b.end_time)}</td>
+            <td>${b.item_count}</td><td>${pill(b.status)}</td>
+            <td>
+              <button class="btn sm ghost pub-view" data-id="${b.batch_id}">查看</button>
+              ${b.status === 'PUBLISHING' && isCoordinator ?
+                `<button class="btn sm danger pub-finish" data-id="${b.batch_id}">结束公示</button>` : ''}
+            </td></tr>`).join('') + '</tbody></table></div>';
+
+        box.querySelectorAll('.pub-view').forEach(btn => {
+          btn.addEventListener('click', () => loadPubDetail(btn.dataset.id));
+        });
+        box.querySelectorAll('.pub-finish').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!await askConfirm('结束该公示批次吗？')) return;
+            try {
+              await api('/api/publicity/batches/' + btn.dataset.id + '/finish', { method: 'POST' });
+              toast('公示已结束', 'ok');
+              loadPublicity();
+            } catch (e) { toast(e.message, 'err'); }
+          });
+        });
+      } catch (e) {
+        box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+      }
+      loadObjections();
+    }
+
+    async function loadPubDetail(batchId) {
+      const box = document.getElementById('pubDetail');
+      box.innerHTML = '<div class="empty">加载中…</div>';
+      try {
+        const b = await api('/api/publicity/batches/' + batchId);
+        box.innerHTML = '<div class="hint">批次 ' + esc(b.batch_no) + '，共 ' + (b.items || []).length + ' 条</div>' +
+          '<div class="table-wrap"><table class="data"><thead><tr>' +
+          '<th>学号</th><th>姓名</th><th>实训室</th><th>导师</th><th>状态</th></tr></thead><tbody>' +
+          (b.items || []).map(i => `<tr><td>${esc(i.student_no)}</td><td>${esc(i.student_name)}</td>
+            <td>${esc(i.lab_name)}</td><td>${esc(i.mentor_name)}</td><td>${pill(i.item_status)}</td></tr>`).join('') +
+          '</tbody></table></div>';
+      } catch (e) {
+        box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+      }
+    }
+
+    async function createPublicity() {
+      const roundId = Number(document.getElementById('pubRound').value) || null;
+      const startTime = document.getElementById('pubStart').value;
+      const endTime = document.getElementById('pubEnd').value;
+      if (!startTime || !endTime) { toast('请填写公示起止时间', 'err'); return; }
+      try {
+        const r = await api('/api/publicity/batches', {
+          method: 'POST',
+          body: { roundId, startTime, endTime, remark: document.getElementById('pubRemark').value.trim() || null }
+        });
+        toast('公示已发布，收录 ' + r.items + ' 条结果', 'ok');
+        loadPublicity();
+      } catch (e) { toast(e.message, 'err'); }
+    }
+
+    async function loadObjections() {
+      const box = document.getElementById('objTable');
+      const status = document.getElementById('objStatus').value;
+      if (!isCoordinator) {
+        box.innerHTML = '<div class="empty">仅全院统筹岗可处理异议</div>';
+        return;
+      }
+      try {
+        const data = await api('/api/objections' + (status ? '?status=' + status : ''));
+        if (!data.items.length) { box.innerHTML = '<div class="empty">暂无异议</div>'; return; }
+        box.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
+          '<th>批次</th><th>学号</th><th>姓名</th><th>内容</th><th>状态</th><th>提交时间</th><th>处理</th></tr></thead><tbody>' +
+          data.items.map(o => `<tr>
+            <td>${esc(o.batch_no)}</td><td>${esc(o.student_no)}</td><td>${esc(o.student_name)}</td>
+            <td style="max-width:260px">${esc(o.content)}</td>
+            <td>${pill(o.status)}</td><td>${fmtTime(o.created_at)}</td>
+            <td>${o.status === 'RESOLVED' || o.status === 'REJECTED' ? esc(o.resolution || '—') :
+              `<button class="btn sm handle-btn" data-id="${o.objection_id}">处理</button>`}</td>
+          </tr>`).join('') + '</tbody></table></div>';
+
+        box.querySelectorAll('.handle-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const statusVal = await askInput({
+              title: '处理异议',
+              message: '请选择处理结果',
+              type: 'select',
+              options: [
+                { value: 'RESOLVED', label: 'RESOLVED - 已解决' },
+                { value: 'PROCESSING', label: 'PROCESSING - 处理中' },
+                { value: 'REJECTED', label: 'REJECTED - 驳回' }
+              ]
+            });
+            if (statusVal === null) return;
+            const resolution = await askInput({
+              title: '处理意见',
+              message: '填写处理说明，可留空。',
+              type: 'textarea',
+              placeholder: '例如：经复核，评分与排名无误。'
+            });
+            if (resolution === null) return;
+            try {
+              await api('/api/objections/' + btn.dataset.id + '/handle', {
+                method: 'POST', body: { status: statusVal.toUpperCase(), resolution }
+              });
+              toast('异议已处理', 'ok');
+              loadObjections();
+            } catch (e) { toast(e.message, 'err'); }
+          });
+        });
+      } catch (e) {
+        box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+      }
+    }
+
+    /* ---------------- 开放日 ---------------- */
+    async function loadOpenDayList() {
+      const box = document.getElementById('odTable');
+      const labId = document.getElementById('odLabFilter').value;
+      const date = document.getElementById('odDateFilter').value;
+      const params = [];
+      if (labId) params.push('labId=' + labId);
+      if (date) params.push('visitDate=' + date);
+      try {
+        const data = await api('/api/open-days/reservations' + (params.length ? '?' + params.join('&') : ''));
+        if (!data.items.length) { box.innerHTML = '<div class="empty">暂无预约</div>'; return; }
+        box.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
+          '<th>学号</th><th>姓名</th><th>实训室</th><th>日期</th><th>时段</th><th>状态</th><th>备注</th><th>操作</th></tr></thead><tbody>' +
+          data.items.map(r => `<tr>
+            <td>${esc(r.student_no)}</td><td>${esc(r.student_name)}</td>
+            <td>${esc(r.lab_name)}</td><td>${esc(r.visit_date)}</td>
+            <td>${{ AM: '上午', PM: '下午', EVENING: '晚上' }[r.time_slot] || r.time_slot}</td>
+            <td>${pill(r.status)}</td><td>${esc(r.remark || '-')}</td>
+            <td>${r.status === 'RESERVED' ?
+              `<button class="btn sm ok od-checkin" data-id="${r.reservation_id}">核验签到</button>` : '—'}</td>
+          </tr>`).join('') + '</tbody></table></div>';
+
+        box.querySelectorAll('.od-checkin').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              await api('/api/open-days/reservations/' + btn.dataset.id + '/checkin', { method: 'POST' });
+              toast('已核验签到', 'ok');
+              loadOpenDayList();
+            } catch (e) { toast(e.message, 'err'); }
+          });
+        });
+      } catch (e) {
+        box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+      }
+    }
+
+    /* ---------------- 阶段与轮次 ---------------- */
+    async function loadProcess() {
+      const stageBox = document.getElementById('stageTable');
+      const roundBox = document.getElementById('roundTable');
+      try {
+        const [stages, rounds] = await Promise.all([api('/api/stages'), api('/api/rounds')]);
+        stageBox.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
+          '<th>序号</th><th>阶段</th><th>时间</th><th>状态</th><th>操作</th></tr></thead><tbody>' +
+          stages.items.map(s => `<tr><td>${s.stage_no}</td><td>${esc(s.stage_name)}</td>
+            <td>${fmtTime(s.start_time)} ~ ${fmtTime(s.end_time)}</td><td>${pill(s.status)}</td>
+            <td>${isCoordinator ? `<button class="btn sm ghost stage-open" data-id="${s.stage_id}">开启</button>
+              <button class="btn sm ghost stage-close" data-id="${s.stage_id}">关闭</button>` : '—'}</td></tr>`).join('') +
+          '</tbody></table></div>';
+        roundBox.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
+          '<th>轮次</th><th>意向上限</th><th>填报窗口</th><th>状态</th><th>操作</th></tr></thead><tbody>' +
+          rounds.items.map(r => `<tr><td>${esc(r.round_name)}</td><td>${r.intent_limit}</td>
+            <td>${fmtTime(r.fill_start)} ~ ${fmtTime(r.fill_end)}</td><td>${pill(r.status)}</td>
+            <td>${isCoordinator ? `<button class="btn sm ghost round-open" data-id="${r.round_id}">开放填报</button>
+              <button class="btn sm ghost round-close" data-id="${r.round_id}">关闭轮次</button>` : '—'}</td></tr>`).join('') +
+          '</tbody></table></div>';
+
+        const bind = (cls, fn) => document.querySelectorAll('.' + cls).forEach(btn =>
+          btn.addEventListener('click', () => fn(btn.dataset.id)));
+        bind('stage-open', id => api('/api/stages/' + id + '/open', { method: 'POST' })
+          .then(() => { toast('阶段已开启', 'ok'); loadProcess(); }).catch(e => toast(e.message, 'err')));
+        bind('stage-close', id => api('/api/stages/' + id + '/close', { method: 'POST' })
+          .then(() => { toast('阶段已关闭', 'ok'); loadProcess(); }).catch(e => toast(e.message, 'err')));
+        bind('round-open', id => api('/api/rounds/' + id + '/open', { method: 'POST' })
+          .then(r => {
+            let msg = '轮次已开放';
+            if (r.released) msg += '，已自动释放上一轮 ' + r.released + ' 个未确认名额';
+            if (r.canceledSessions) msg += '，已撤销此前 ' + r.canceledSessions + ' 个面试场次';
+            toast(msg, 'ok');
+            loadProcess();
+          }).catch(e => toast(e.message, 'err')));
+        bind('round-close', id => api('/api/rounds/' + id + '/close', { method: 'POST' })
+          .then(r => {
+            toast('轮次已关闭：自动确认 ' + (r.autoConfirmed || 0) + ' 人，提醒待确认 ' + (r.reminded || 0) + ' 人（30 分钟内未确认将释放名额并进入补录）', 'ok');
+            loadProcess();
+          }).catch(e => toast(e.message, 'err')));
+      } catch (e) {
+        stageBox.innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+      }
+    }
+
+    function bindOperations() {
+      document.getElementById('dispatchReminders').addEventListener('click', async () => {
+        try { const r = await api('/api/interview/reminders/dispatch', { method: 'POST' }); toast('提醒派发完成：' + JSON.stringify(r), 'ok'); }
+        catch (e) { toast(e.message, 'err'); }
+      });
+      document.getElementById('autoConfirm').addEventListener('click', async () => {
+        try { const r = await api('/api/results/auto-confirm', { method: 'POST' }); toast('自动确认完成：' + JSON.stringify(r), 'ok'); }
+        catch (e) { toast(e.message, 'err'); }
+      });
+      document.getElementById('releaseExpired').addEventListener('click', async () => {
+        if (!await askConfirm('释放所有超时未确认的拟录取名额？')) return;
+        try { const r = await api('/api/results/release-expired', { method: 'POST' }); toast('释放完成：' + JSON.stringify(r), 'ok'); }
+        catch (e) { toast(e.message, 'err'); }
+      });
+    }
+
+    /* ---------------- 初始化 ---------------- */
+    document.getElementById('intentReload').addEventListener('click', loadIntents);
+    document.getElementById('intentLab').addEventListener('change', loadIntents);
+    document.getElementById('intentRound').addEventListener('change', loadIntents);
+    document.getElementById('sessCreate').addEventListener('click', createSession);
+    document.getElementById('sessLab').addEventListener('change', loadJudges);
+    document.getElementById('scoreSubmit').addEventListener('click', submitScore);
+    document.getElementById('adjMatch').addEventListener('click', runMatch);
+    document.getElementById('adjReload').addEventListener('click', loadAdjustments);
+    document.getElementById('negSubmit').addEventListener('click', submitNegotiation);
+    document.getElementById('pubCreate').addEventListener('click', createPublicity);
+    document.getElementById('objReload').addEventListener('click', loadObjections);
+    document.getElementById('odReload').addEventListener('click', loadOpenDayList);
+
+    (async function init() {
+      initShell('实训室选报系统',
+        isCoordinator ? '全院统筹岗' : (ownedLabs.length ? '实训室负责人' : '导师'));
+      if (!isCoordinator && !ownedLabs.length) {
+        document.getElementById('createSessionCard').style.display = 'none';
+        toast('当前账号为导师身份：可查看本人学生的面试场次并完成签到、评分与修改', 'err');
+      }
+      if (!isCoordinator) {
+        document.getElementById('adjHint').style.display = '';
+        document.getElementById('adjMatch').disabled = true;
+      }
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+        'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+      const start = new Date(now.getTime() + 3600000);
+      const end = new Date(now.getTime() + 7200000);
+      document.getElementById('sessStart').value = iso(start);
+      document.getElementById('sessEnd').value = iso(end);
+      document.getElementById('pubStart').value = iso(now);
+      document.getElementById('pubEnd').value = iso(new Date(now.getTime() + 48 * 3600000));
+
+    async function loadLabProfiles() {
+      const box = document.getElementById('labProfileList');
+      try {
+        const data = await api('/api/labs/profiles');
+        state.introMap = {};
+        if (!data.items.length) {
+          box.innerHTML = '<div class="empty">暂无实训室信息</div>';
+          return;
+        }
+        box.innerHTML = data.items.map(lab => {
+          const canEditLab = isCoordinator || ownedLabs.includes(lab.lab_id);
+          lab.mentors.forEach(m => { state.introMap[m.mentor_id] = m.intro || ''; });
+          return `
+          <div class="card" style="box-shadow:none;background:#fbfcff;margin-bottom:12px">
+            <div class="row" style="align-items:center;gap:8px">
+              <h3 style="margin:0">${esc(lab.name)}</h3>
+              <span class="tag gray">${esc(lab.lab_code)}</span>
+              <span class="spacer" style="flex:1"></span>
+              ${canEditLab ? `<button class="btn sm ghost" data-lab-edit="${lab.lab_id}">编辑本室信息</button>` : ''}
+            </div>
+            <div id="labView-${lab.lab_id}">
+              <div class="sub"><b>主要方向：</b>${esc(lab.direction || '待补充')}</div>
+              <div class="sub"><b>实训室简介：</b>${esc(lab.intro || '暂无简介')}</div>
+            </div>
+            <div id="labEdit-${lab.lab_id}" style="display:none;margin-top:8px">
+              <label class="field"><span>主要方向</span>
+                <input type="text" id="labDir-${lab.lab_id}" maxlength="255" value="${esc(lab.direction || '')}" placeholder="如：AI 应用开发与大模型实践">
+              </label>
+              <label class="field"><span>实训室简介</span>
+                <textarea id="labIntro-${lab.lab_id}" rows="3" maxlength="1000" placeholder="介绍实训室定位、项目与培养方式">${esc(lab.intro || '')}</textarea>
+              </label>
+              <div class="row">
+                <button class="btn ok" data-lab-save="${lab.lab_id}">保存</button>
+                <button class="btn ghost" data-lab-cancel="${lab.lab_id}">取消</button>
+              </div>
+            </div>
+            <div class="sub" style="margin-top:8px"><b>导师团队（${lab.mentors.length} 人）</b></div>
+            ${lab.mentors.map(m => `
+              <div style="padding:8px 0;border-top:1px dashed #e6e9f2">
+                <div class="row" style="align-items:center;gap:8px">
+                  <b>${esc(m.name)}</b>
+                  <span class="tag gray">${esc(m.title || '导师')}</span>
+                  ${m.teacher_id === user.teacherId
+                    ? `<button class="btn sm ghost" data-intro-edit="${m.mentor_id}">编辑我的简介</button>` : ''}
+                </div>
+                <div class="sub">研究方向：${esc(m.research_direction || '待补充')}</div>
+                <div class="sub">${esc(m.intro || '暂无简介')}</div>
+              </div>`).join('')}
+          </div>`;
+        }).join('');
+
+        box.querySelectorAll('[data-lab-edit]').forEach(btn => {
+          btn.onclick = () => {
+            const id = btn.dataset.labEdit;
+            document.getElementById('labView-' + id).style.display = 'none';
+            document.getElementById('labEdit-' + id).style.display = '';
+          };
+        });
+        box.querySelectorAll('[data-lab-cancel]').forEach(btn => {
+          btn.onclick = () => {
+            const id = btn.dataset.labCancel;
+            document.getElementById('labView-' + id).style.display = '';
+            document.getElementById('labEdit-' + id).style.display = 'none';
+          };
+        });
+        box.querySelectorAll('[data-lab-save]').forEach(btn => {
+          btn.onclick = async () => {
+            const id = btn.dataset.labSave;
+            const direction = document.getElementById('labDir-' + id).value.trim();
+            const intro = document.getElementById('labIntro-' + id).value.trim();
+            if (!direction) { toast('请填写主要方向', 'err'); return; }
+            btn.disabled = true;
+            try {
+              await api(`/api/labs/${id}/profile`, { method: 'PATCH', body: { direction, intro } });
+              toast('实训室信息已更新', 'ok');
+              loadLabProfiles();
+            } catch (e) {
+              toast(e.message, 'err');
+              btn.disabled = false;
+            }
+          };
+        });
+        box.querySelectorAll('[data-intro-edit]').forEach(btn => {
+          btn.onclick = async () => {
+            const mid = btn.dataset.introEdit;
+            const val = await askInput({
+              title: '编辑我的简介', type: 'textarea',
+              value: state.introMap[mid] || '',
+              placeholder: '介绍你的研究方向、项目经历与指导方式（500 字以内）'
+            });
+            if (val === null) return;
+            try {
+              await api('/api/teachers/me/intro', { method: 'PATCH', body: { intro: val.trim() } });
+              toast('简介已更新', 'ok');
+              loadLabProfiles();
+            } catch (e) { toast(e.message, 'err'); }
+          };
+        });
+      } catch (err) {
+        box.innerHTML = `<div class="empty">加载失败：${esc(err.message)}</div>`;
+      }
+    }
+
+      bindTabs(tab => {
+        if (tab === 'overview') loadStats();
+        if (tab === 'intents') loadIntentsWithRounds();
+        if (tab === 'sessions') { syncSessionRound().finally(loadSessions); }
+        if (tab === 'labs') loadLabProfiles();
+        if (tab === 'adjust') loadAdjustments();
+        if (tab === 'publicity') loadPublicity();
+        if (tab === 'openday') loadOpenDayList();
+        if (tab === 'process') loadProcess();
+      });
+      bindOperations();
+
+      try {
+        await loadBase();
+        await renderUserLabInfo();
+        loadJudges();
+        loadStats();
+      } catch (e) {
+        toast(e.message, 'err');
+      }
+    })();
+  </script>
+</body>
+</html>
+
+

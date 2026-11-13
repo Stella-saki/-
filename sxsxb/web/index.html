@@ -1,0 +1,196 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 · 实训室选报系统</title>
+  <link rel="stylesheet" href="app.css?v=20261112e">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <img src="logo.png" alt="河北师范大学软件学院院标" class="login-logo">
+      <h1 style="text-align:center">实训室选报系统</h1>
+      <div class="tabs" style="justify-content:center;margin-bottom:14px">
+        <button class="tab-btn active" type="button" id="tabLogin">登录</button>
+        <button class="tab-btn" type="button" id="tabRegister">注册学生账号</button>
+      </div>
+      <div class="tip" id="loginTip" style="text-align:center">请使用学号 / 工号登录，学生与老师进入各自工作台。</div>
+      <form id="loginForm" autocomplete="off">
+        <label class="field">
+          <span>登录账号</span>
+          <input type="text" id="loginName" placeholder="学号或工号，如 S2026001 / T001" required>
+        </label>
+        <label class="field">
+          <span>密码</span>
+          <input type="password" id="password" placeholder="演示密码 123456" required>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#5b6784;margin:2px 0 12px">
+          <input type="checkbox" id="rememberMe"> 记住账号密码
+        </label>
+        <button class="btn" type="submit" id="loginBtn">登录</button>
+      </form>
+      <form id="registerForm" autocomplete="off" style="display:none">
+        <label class="field">
+          <span>学号</span>
+          <input type="text" id="regStudentNo" placeholder="4-32 位字母或数字，注册后作为登录账号" required>
+        </label>
+        <label class="field">
+          <span>姓名</span>
+          <input type="text" id="regName" placeholder="真实姓名" required>
+        </label>
+        <div class="row" style="gap:10px">
+          <label class="field grow"><span>年级</span><input type="text" id="regGrade" placeholder="如 2026" required></label>
+          <label class="field grow"><span>专业</span><input type="text" id="regMajor" placeholder="如 软件工程" required></label>
+        </div>
+        <label class="field">
+          <span>手机号（可选）</span>
+          <input type="text" id="regPhone" placeholder="用于接收面试通知">
+        </label>
+        <div class="sub" style="margin:4px 0 8px;font-weight:600;color:#5b6784">个人简历</div>
+        <label class="field">
+          <span>年级排名（必填）</span>
+          <input type="text" id="regGradeRank" placeholder="如 3 或 3/120" required>
+        </label>
+        <label class="field">
+          <span>获奖情况（可选）</span>
+          <textarea id="regAwards" rows="2" placeholder="如：蓝桥杯省级二等奖、校级奖学金等"></textarea>
+        </label>
+        <div class="row" style="gap:10px">
+          <label class="field grow">
+            <span>擅长方向（可选）</span>
+            <input type="text" id="regSpecialty" placeholder="如：Web 前端、算法、数据分析">
+          </label>
+          <label class="field grow">
+            <span>意向发展方向（可选）</span>
+            <input type="text" id="regDevDirection" placeholder="如：人工智能、后端开发">
+          </label>
+        </div>
+        <label class="field">
+          <span>密码</span>
+          <input type="password" id="regPassword" placeholder="至少 6 位" required>
+        </label>
+        <label class="field">
+          <span>确认密码</span>
+          <input type="password" id="regPassword2" placeholder="再次输入密码" required>
+        </label>
+        <button class="btn" type="submit" id="registerBtn" style="margin-top:4px">注册并登录</button>
+      </form>
+      <div class="demo-box">
+        <div>演示账号（密码均为 <b>123456</b>）</div>
+        <div>学生：<b>S2026001 ~ S2026010</b></div>
+        <div>教师：<b>T001</b>（统筹岗 + 实训室1负责人）、<b>T002 ~ T004</b>（各实训室负责人）、<b>T005 ~</b>（导师/评委）</div>
+      </div>
+    </div>
+  </div>
+  <script src="common.js?v=20261112e"></script>
+  <script>
+    const user = getUser();
+    if (getToken() && user) {
+      location.replace(user.userType === 'TEACHER' ? 'teacher.html' : 'student.html');
+    }
+
+    const REMEMBER_KEY = 'sxsxb.remember';
+    const nameInput = document.getElementById('loginName');
+    const pwdInput = document.getElementById('password');
+    const rememberBox = document.getElementById('rememberMe');
+
+    // 回填上次勾选“记住账号密码”时保存的账号与密码
+    try {
+      const saved = JSON.parse(localStorage.getItem(REMEMBER_KEY) || 'null');
+      if (saved && saved.loginName) {
+        nameInput.value = saved.loginName;
+        pwdInput.value = saved.password || '';
+        rememberBox.checked = true;
+      }
+    } catch (e) {
+      localStorage.removeItem(REMEMBER_KEY);
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('loginBtn');
+      btn.disabled = true;
+      btn.textContent = '登录中…';
+      try {
+        const loginName = nameInput.value.trim();
+        const password = pwdInput.value;
+        const data = await api('/api/auth/login', {
+          method: 'POST',
+          auth: false,
+          body: { loginName, password }
+        });
+        if (rememberBox.checked) {
+          localStorage.setItem(REMEMBER_KEY, JSON.stringify({ loginName, password }));
+        } else {
+          localStorage.removeItem(REMEMBER_KEY);
+        }
+        saveSession(data.token, data.user);
+        location.href = data.user.userType === 'TEACHER' ? 'teacher.html' : 'student.html';
+      } catch (err) {
+        toast(err.message, 'err');
+        btn.disabled = false;
+        btn.textContent = '登录';
+      }
+    });
+
+    // 登录 / 注册 切换
+    const tabLogin = document.getElementById('tabLogin');
+    const tabRegister = document.getElementById('tabRegister');
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+    const loginTip = document.getElementById('loginTip');
+    function switchMode(register) {
+      tabLogin.classList.toggle('active', !register);
+      tabRegister.classList.toggle('active', register);
+      loginForm.style.display = register ? 'none' : '';
+      registerForm.style.display = register ? '' : 'none';
+      loginTip.textContent = register
+        ? '学生可自助注册：学号将作为登录账号，注册成功后自动登录。教师账号由教务统一开通。'
+        : '请使用学号 / 工号登录，学生与老师进入各自工作台。';
+    }
+    tabLogin.addEventListener('click', () => switchMode(false));
+    tabRegister.addEventListener('click', () => switchMode(true));
+
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('registerBtn');
+      const password = document.getElementById('regPassword').value;
+      if (password !== document.getElementById('regPassword2').value) {
+        toast('两次输入的密码不一致', 'err');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = '注册中…';
+      try {
+        const data = await api('/api/auth/register', {
+          method: 'POST',
+          auth: false,
+          body: {
+            studentNo: document.getElementById('regStudentNo').value.trim(),
+            name: document.getElementById('regName').value.trim(),
+            password,
+            grade: document.getElementById('regGrade').value.trim(),
+            major: document.getElementById('regMajor').value.trim(),
+            phone: document.getElementById('regPhone').value.trim(),
+            gradeRank: document.getElementById('regGradeRank').value.trim(),
+            awards: document.getElementById('regAwards').value.trim(),
+            specialty: document.getElementById('regSpecialty').value.trim(),
+            developmentDirection: document.getElementById('regDevDirection').value.trim()
+          }
+        });
+        localStorage.removeItem(REMEMBER_KEY);
+        saveSession(data.token, data.user);
+        toast('注册成功，正在进入学生工作台', 'ok');
+        location.href = 'student.html';
+      } catch (err) {
+        toast(err.message, 'err');
+        btn.disabled = false;
+        btn.textContent = '注册并登录';
+      }
+    });
+  </script>
+</body>
+</html>
+
+
