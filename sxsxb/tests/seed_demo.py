@@ -80,26 +80,47 @@ def clean():
         cur.execute("UPDATE student SET selection_state = 'NOT_FILLED'")
         cur.execute("UPDATE lab SET quota = 12 WHERE lab_id IN (1,2,3,4)")
         cur.execute("UPDATE lab SET status = 'OPEN' WHERE lab_id IN (1,2,3,4)")
+        # 阶段时间窗按流程图相对关系：宣讲 D 14:00；开放日 D~D+1；意向填报 D+4 08:00-12:00；
+        # 面试 D+4 12:00~D+5 17:00；确认 D+6 08:00-12:00；补录 D+6 12:00~D+7 17:00；
+        # 统筹调剂 D+8 08:00-12:00；公示 1 天（D=2026-11-02）
+        for code, start, end in (
+            ("BRIEFING", "2026-11-02 14:00:00", "2026-11-02 16:00:00"),
+            ("OPEN_DAY", "2026-11-02 14:00:00", "2026-11-03 17:00:00"),
+            ("INTENT", "2026-11-06 08:00:00", "2026-11-06 12:00:00"),
+            ("INTERVIEW", "2026-11-06 12:00:00", "2026-11-07 17:00:00"),
+            ("CONFIRM", "2026-11-08 08:00:00", "2026-11-08 12:00:00"),
+            ("SUPPLEMENT", "2026-11-08 12:00:00", "2026-11-09 17:00:00"),
+            ("ADJUST", "2026-11-10 08:00:00", "2026-11-10 12:00:00"),
+            ("PUBLICITY", "2026-11-10 12:00:00", "2026-11-11 12:00:00"),
+        ):
+            cur.execute(
+                "UPDATE selection_stage SET start_time=%s, end_time=%s WHERE stage_code=%s",
+                (start, end, code),
+            )
+        # 轮次时间窗嵌入对应阶段（首轮=意向填报/面试/确认；二三轮=分轮补录；调剂=统筹调剂）
         cur.execute(
-            "UPDATE selection_round SET fill_start='2026-11-10 00:00:00', "
-            "fill_end='2026-11-30 23:59:59', interview_start='2026-11-12 08:00:00', "
-            "interview_end='2026-11-25 18:00:00', confirm_start='2026-11-12 08:00:00', "
-            "confirm_end='2026-11-30 23:59:59', status='FILLING' WHERE round_id=1"
+            "UPDATE selection_round SET fill_start='2026-11-06 08:00:00', "
+            "fill_end='2026-11-06 12:00:00', interview_start='2026-11-06 12:00:00', "
+            "interview_end='2026-11-07 17:00:00', confirm_start='2026-11-08 08:00:00', "
+            "confirm_end='2026-11-08 12:00:00', status='PLANNED' WHERE round_id=1"
         )
         cur.execute(
-            "UPDATE selection_round SET fill_start='2026-12-01 09:00:00', "
-            "fill_end='2026-12-01 17:00:00', interview_start='2026-12-02 09:00:00', "
-            "interview_end='2026-12-02 17:00:00', status='PLANNED' WHERE round_id=2"
+            "UPDATE selection_round SET fill_start='2026-11-08 12:00:00', "
+            "fill_end='2026-11-09 09:00:00', interview_start='2026-11-09 09:00:00', "
+            "interview_end='2026-11-09 12:00:00', confirm_start='2026-11-09 12:00:00', "
+            "confirm_end='2026-11-09 14:00:00', status='PLANNED' WHERE round_id=2"
         )
         cur.execute(
-            "UPDATE selection_round SET fill_start='2026-12-03 09:00:00', "
-            "fill_end='2026-12-03 17:00:00', interview_start='2026-12-04 09:00:00', "
-            "interview_end='2026-12-04 17:00:00', status='PLANNED' WHERE round_id=3"
+            "UPDATE selection_round SET fill_start='2026-11-09 14:00:00', "
+            "fill_end='2026-11-09 15:00:00', interview_start='2026-11-09 15:00:00', "
+            "interview_end='2026-11-09 16:00:00', confirm_start='2026-11-09 16:00:00', "
+            "confirm_end='2026-11-09 17:00:00', status='PLANNED' WHERE round_id=3"
         )
         cur.execute(
-            "UPDATE selection_round SET fill_start='2026-12-05 09:00:00', "
-            "fill_end='2026-12-05 17:00:00', interview_start='2026-12-05 09:00:00', "
-            "interview_end='2026-12-05 17:00:00', status='PLANNED' WHERE round_id=4"
+            "UPDATE selection_round SET fill_start='2026-11-10 08:00:00', "
+            "fill_end='2026-11-10 12:00:00', interview_start='2026-11-10 08:00:00', "
+            "interview_end='2026-11-10 11:00:00', confirm_start='2026-11-10 11:00:00', "
+            "confirm_end='2026-11-10 12:00:00', status='PLANNED' WHERE round_id=4"
         )
     conn.close()
 
@@ -204,6 +225,13 @@ def main():
          ("T001", "T002", "T003", "T004", "T005", "T006", "T007", "T009")}
     s = {i: login(f"S2026{i:03d}") for i in range(1, 11)}
 
+    # 演示造数期间临时开启意向填报阶段（收尾时恢复为待进行）
+    conn = db()
+    with conn.cursor() as cur:
+        cur.execute("UPDATE selection_stage SET status='OPEN' WHERE stage_code='INTENT'")
+        cur.execute("UPDATE selection_round SET status='FILLING' WHERE round_id=1")
+    conn.close()
+
     # ---------- 意向填报 ----------
     mapping = {
         1: [1, 4, 7], 2: [2, 5, 8], 3: [3, 6, 9], 4: [4, 1, 10], 5: [5, 2, 11],
@@ -295,6 +323,11 @@ def main():
     print(f"公示批次 {batch_id} 已发布，异议提交 -> {status}")
 
     # ---------- 开放日预约 ----------
+    # 预约仅在“实训室开放日”阶段可用，生成期间临时开启该阶段
+    conn = db()
+    with conn.cursor() as cur:
+        cur.execute("UPDATE selection_stage SET status='OPEN' WHERE stage_code='OPEN_DAY'")
+    conn.close()
     visit = (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d")
     for sid, lab, slot, remark in ((1, 1, "上午", "想了解实验室项目与设备"),
                                    (4, 2, "下午", "关注智能硬件方向")):
@@ -303,7 +336,24 @@ def main():
         })
         if status != 200:
             raise RuntimeError(f"开放日预约失败 {status} {data}")
+    conn = db()
+    with conn.cursor() as cur:
+        cur.execute("UPDATE selection_stage SET status='CLOSED' WHERE stage_code='OPEN_DAY'")
+    conn.close()
     print(f"开放日预约：张伟（AI 应用）、刘洋（智能硬件） {visit}")
+
+    # ---------- 恢复基线：意向填报阶段未开启，填报轮次待进行 ----------
+    conn = db()
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE selection_stage SET status='CLOSED', closed_at=NOW(3) "
+            "WHERE stage_code='INTENT' AND status='OPEN'"
+        )
+        cur.execute(
+            "UPDATE selection_round SET status='PLANNED' "
+            "WHERE status='FILLING' AND round_id=1"
+        )
+    conn.close()
 
     # ---------- 汇总 ----------
     conn = db()

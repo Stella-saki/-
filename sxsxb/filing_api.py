@@ -57,6 +57,17 @@ app = FastAPI(title="实训室选报系统 - 填报接口", version="0.1.0",
               default_response_class=UTF8JSONResponse)
 
 
+@app.middleware("http")
+async def static_no_cache(request, call_next):
+    """静态页面每次加载都向服务端校验，避免演示时浏览器使用旧 HTML。"""
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 def get_conn():
     return pymysql.connect(**DB_CONFIG)
 
@@ -260,10 +271,40 @@ def parse_dt(value: str) -> datetime:
         raise HTTPException(status_code=400, detail=f"时间格式错误：{value}")
 
 
+def session_live_status(status: Optional[str], start_time: datetime,
+                        end_time: datetime) -> str:
+    """场次状态随时间流转：已撤销不变，其余按当前时间推导待进行/进行中/已结束。"""
+    if status == "CANCELED":
+        return status
+    now = datetime.now()
+    if end_time and now >= end_time:
+        return "FINISHED"
+    if start_time and now >= start_time:
+        return "ONGOING"
+    return "PLANNED"
+
+
 def require_coordinator(cur, user: dict) -> None:
     roles = teacher_roles(cur, user["teacher_id"])
     if not any(r["role_code"] == "COORDINATOR" for r in roles):
         raise HTTPException(status_code=403, detail="仅全院统筹岗可执行提醒派发")
+
+
+def require_adjust_round_filling(cur, round_id: Optional[int] = None) -> None:
+    """统筹调剂功能仅在统筹调剂轮次填报中可用。"""
+    if round_id is None:
+        cur.execute(
+            "SELECT round_id FROM selection_round "
+            "WHERE round_type = 'ADJUST' AND status = 'FILLING' LIMIT 1"
+        )
+    else:
+        cur.execute(
+            "SELECT round_id FROM selection_round WHERE round_id = %s "
+            "AND round_type = 'ADJUST' AND status = 'FILLING' LIMIT 1",
+            (round_id,),
+        )
+    if not cur.fetchone():
+        raise HTTPException(status_code=409, detail="当前不在统筹调剂轮次，暂不能执行统筹调剂操作")
 
 
 def ensure_supplement_eligible(cur, student_id: int, round_type: str) -> None:
@@ -886,6 +927,21 @@ def next_round(cur) -> Optional[dict]:
     return cur.fetchone()
 
 
+FILLING_STAGE_BY_ROUND = {"FIRST": "INTENT", "SECOND": "SUPPLEMENT", "THIRD": "SUPPLEMENT"}
+
+
+def ensure_filing_stage(cur, round_type: str) -> None:
+    """学生选报必须处于对应阶段：首轮→意向填报，补录→分轮补录。"""
+    stage_code = FILLING_STAGE_BY_ROUND.get(round_type)
+    if not stage_code:
+        return
+    cur.execute("SELECT status FROM selection_stage WHERE stage_code = %s", (stage_code,))
+    row = cur.fetchone()
+    if not row or row["status"] != "OPEN":
+        label = "意向填报" if stage_code == "INTENT" else "分轮补录"
+        raise HTTPException(status_code=409, detail=f"{label}阶段未开启，暂不能选报意向")
+
+
 def ensure_fill_window(cur, round_id: int) -> dict:
     cur.execute(
         """
@@ -900,6 +956,7 @@ def ensure_fill_window(cur, round_id: int) -> dict:
         raise HTTPException(status_code=404, detail="轮次不存在")
     if row["status"] != "FILLING":
         raise HTTPException(status_code=409, detail="该轮次未开启填报")
+    ensure_filing_stage(cur, row["round_type"])
     return row
 
 
@@ -1094,6 +1151,8 @@ def filing_context(user: dict = Depends(current_student)):
                 """
             )
             stage = cur.fetchone()
+            cur.execute("SELECT status FROM selection_stage WHERE stage_code = 'SUPPLEMENT'")
+            supplement = cur.fetchone()
             cur.execute(
                 """
                 SELECT m.mentor_id, m.capacity, m.research_direction,
@@ -1118,13 +1177,20 @@ def filing_context(user: dict = Depends(current_student)):
                     (user["student_id"], cur_round["round_id"]),
                 )
                 application = cur.fetchone()
+        intent_stage_open = bool(stage and stage["status"] == "OPEN")
+        supplement_stage_open = bool(supplement and supplement["status"] == "OPEN")
+        is_open = cur_round is not None and (
+            intent_stage_open if cur_round["round_type"] == "FIRST"
+            else supplement_stage_open if cur_round["round_type"] in ("SECOND", "THIRD")
+            else False
+        )
         return {
             "serverTime": server_time,
             "stage": stage,
             "round": cur_round,
             "nextRound": upcoming,
-            "isOpen": cur_round is not None,
-            "intentLimit": cur_round["intent_limit"] if cur_round else None,
+            "isOpen": is_open,
+            "intentLimit": cur_round["intent_limit"] if (cur_round and is_open) else None,
             "mentors": mentors,
             "application": application,
         }
@@ -1140,6 +1206,7 @@ def create_application(user: dict = Depends(current_student)):
             round_row = open_round(cur)
             if not round_row:
                 raise HTTPException(status_code=409, detail="当前不在意向填报时间窗内")
+            ensure_fill_window(cur, round_row["round_id"])
             ensure_supplement_eligible(cur, user["student_id"], round_row["round_type"])
             cur.execute(
                 """
@@ -1442,6 +1509,38 @@ def create_interview_session(body: SessionIn, user: dict = Depends(current_teach
                     """,
                     [(session_id, tid) for tid in body.judgeTeacherIds],
                 )
+            stage_switched = None
+            if round_row["round_type"] == "FIRST":
+                cur.execute(
+                    "SELECT stage_id, stage_code, status FROM selection_stage "
+                    "WHERE stage_code IN ('INTENT', 'INTERVIEW', 'CONFIRM')"
+                )
+                stages = {r["stage_code"]: r for r in cur.fetchall()}
+                intent = stages.get("INTENT")
+                interview = stages.get("INTERVIEW")
+                confirm = stages.get("CONFIRM")
+                if intent and interview and intent["status"] == "OPEN":
+                    cur.execute(
+                        "UPDATE selection_stage SET status = 'CLOSED', closed_by = %s, "
+                        "closed_at = NOW(3) WHERE stage_id = %s",
+                        (user["teacher_id"], intent["stage_id"]),
+                    )
+                    # 面试考核与拟录取确认成对开启
+                    for paired in (interview, confirm):
+                        if paired:
+                            cur.execute(
+                                "UPDATE selection_stage SET status = 'OPEN', opened_by = %s, "
+                                "opened_at = NOW(3), closed_by = NULL, closed_at = NULL "
+                                "WHERE stage_id = %s",
+                                (user["teacher_id"], paired["stage_id"]),
+                            )
+                    stage_switched = "INTERVIEW"
+                    write_audit(
+                        cur, user["account_id"], "TEACHER", "STAGE_SWITCH",
+                        "SELECTION_STAGE", interview["stage_id"],
+                        {"stage": "INTENT"},
+                        {"stage": "INTERVIEW", "trigger": "INTERVIEW_SESSION_CREATE"},
+                    )
             write_audit(
                 cur,
                 user["account_id"],
@@ -1468,6 +1567,7 @@ def create_interview_session(body: SessionIn, user: dict = Depends(current_teach
                 "endTime": end,
                 "location": body.location,
                 "judges": body.judgeTeacherIds,
+                "stageSwitched": stage_switched,
             }
     except HTTPException:
         conn.rollback()
@@ -1732,7 +1832,11 @@ def list_interview_sessions(roundId: Optional[int] = None,
                 """,
                 tuple(params),
             )
-            return cur.fetchall()
+            rows = cur.fetchall()
+            for row in rows:
+                row["status"] = session_live_status(
+                    row["status"], row["start_time"], row["end_time"])
+            return rows
     finally:
         conn.close()
 
@@ -1755,6 +1859,8 @@ def get_interview_session(session_id: int, user: dict = Depends(current_teacher)
             session = cur.fetchone()
             if not session:
                 raise HTTPException(status_code=404, detail="面试场次不存在")
+            session["status"] = session_live_status(
+                session["status"], session["start_time"], session["end_time"])
             roles = teacher_roles(cur, user["teacher_id"])
             is_manager = any(r["role_code"] == "COORDINATOR" for r in roles) or any(
                 r["role_code"] == "LAB_OWNER" and r["scope_lab_id"] == session["lab_id"]
@@ -1988,6 +2094,8 @@ def my_interview_schedule(user: dict = Depends(current_student)):
             )
             sessions = cur.fetchall()
             for item in sessions:
+                item["status"] = session_live_status(
+                    item["status"], item["start_time"], item["end_time"])
                 cur.execute(
                     """
                     SELECT reminder_id, offset_minutes, remind_at, send_status, read_at, ack_at
@@ -2927,28 +3035,93 @@ def update_lab_profile(lab_id: int, body: dict,
 
 @app.patch("/api/teachers/me/intro")
 def update_my_intro(body: dict, user: dict = Depends(current_teacher)):
-    """教师维护自己的简介。"""
+    """教师维护自己的职位、研究方向与简介。
+
+    仅传 intro 时等价于原“编辑简介”；传 mentorId 与 researchDirection 时
+    同时更新该导师记录的研究方向（只能修改本人导师记录）。
+    """
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="请求体格式错误")
-    intro = str(body.get("intro") or "").strip()
-    if len(intro) > 500:
+    intro = body.get("intro")
+    title = body.get("title")
+    research_direction = body.get("researchDirection")
+    mentor_id = body.get("mentorId")
+    if intro is None and title is None and research_direction is None:
+        raise HTTPException(status_code=400, detail="未提交需要修改的内容")
+    intro = None if intro is None else str(intro).strip()
+    title = None if title is None else str(title).strip()
+    research_direction = (
+        None if research_direction is None else str(research_direction).strip()
+    )
+    if intro is not None and len(intro) > 500:
         raise HTTPException(status_code=400, detail="简介不超过 500 字")
+    if title is not None:
+        if not title:
+            raise HTTPException(status_code=400, detail="职称/职位不能为空")
+        if len(title) > 50:
+            raise HTTPException(status_code=400, detail="职称/职位不超过 50 字")
+    if research_direction is not None and len(research_direction) > 255:
+        raise HTTPException(status_code=400, detail="研究方向不超过 255 字")
+    if research_direction is not None and not mentor_id:
+        raise HTTPException(status_code=400, detail="缺少导师记录标识")
+
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT intro FROM teacher WHERE teacher_id = %s FOR UPDATE",
-                        (user["teacher_id"],))
+            cur.execute(
+                "SELECT title, intro FROM teacher WHERE teacher_id = %s FOR UPDATE",
+                (user["teacher_id"],),
+            )
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="教师不存在")
-            cur.execute("UPDATE teacher SET intro = %s WHERE teacher_id = %s",
-                        (intro or None, user["teacher_id"]))
+
+            updates = []
+            params = []
+            if title is not None:
+                updates.append("title = %s")
+                params.append(title)
+            if intro is not None:
+                updates.append("intro = %s")
+                params.append(intro or None)
+            if updates:
+                params.append(user["teacher_id"])
+                cur.execute(
+                    f"UPDATE teacher SET {', '.join(updates)} WHERE teacher_id = %s",
+                    params,
+                )
+
+            if research_direction is not None:
+                cur.execute(
+                    "SELECT research_direction FROM mentor "
+                    "WHERE mentor_id = %s AND teacher_id = %s FOR UPDATE",
+                    (mentor_id, user["teacher_id"]),
+                )
+                mentor_row = cur.fetchone()
+                if not mentor_row:
+                    raise HTTPException(status_code=403, detail="只能修改本人的导师信息")
+                cur.execute(
+                    "UPDATE mentor SET research_direction = %s WHERE mentor_id = %s",
+                    (research_direction or None, mentor_id),
+                )
+
+            after = {
+                "title": title if title is not None else row["title"],
+                "intro": intro if intro is not None else row["intro"],
+                "researchDirection": research_direction,
+            }
+            action = (
+                "TEACHER_PROFILE_UPDATE"
+                if (title is not None or research_direction is not None)
+                else "TEACHER_INTRO_UPDATE"
+            )
             write_audit(
-                cur, user["account_id"], "TEACHER", "TEACHER_INTRO_UPDATE", "TEACHER",
-                user["teacher_id"], row, {"intro": intro},
+                cur, user["account_id"], "TEACHER", action, "TEACHER",
+                user["teacher_id"], {"title": row["title"], "intro": row["intro"]},
+                after,
             )
         conn.commit()
-        return {"teacherId": user["teacher_id"], "intro": intro}
+        return {"teacherId": user["teacher_id"], **after}
     except HTTPException:
         conn.rollback()
         raise
@@ -3106,6 +3279,13 @@ def reserve_open_day(body: ReservationIn, user: dict = Depends(current_student))
                 raise HTTPException(status_code=404, detail="实训室不存在")
             if lab_row["status"] != "OPEN":
                 raise HTTPException(status_code=409, detail="该实训室暂未开放参观")
+            # 仅在实训室开放日阶段可预约参观
+            cur.execute(
+                "SELECT status FROM selection_stage WHERE stage_code = 'OPEN_DAY' LIMIT 1"
+            )
+            stage_row = cur.fetchone()
+            if not stage_row or stage_row["status"] != "OPEN":
+                raise HTTPException(status_code=409, detail="实训室开放日阶段未开启，暂不能预约参观")
             cur.execute(
                 """
                 INSERT INTO open_day_reservation
@@ -3225,6 +3405,31 @@ def checkin_open_day(reservation_id: int, user: dict = Depends(current_teacher))
         conn.close()
 
 
+STAGE_ROUND_TYPES = {
+    "INTENT": ("FIRST",),
+    "INTERVIEW": ("FIRST",),
+    "CONFIRM": ("FIRST",),
+    "SUPPLEMENT": ("SECOND", "THIRD"),
+    "ADJUST": ("ADJUST",),
+}
+
+# 允许同时开启且开闭同步的阶段对
+STAGE_PAIRS = {"INTERVIEW": "CONFIRM", "CONFIRM": "INTERVIEW"}
+
+
+def _stage_linked_rounds(cur, stage_code: str) -> list:
+    types = STAGE_ROUND_TYPES.get(stage_code)
+    if not types:
+        return []
+    placeholders = ",".join(["%s"] * len(types))
+    cur.execute(
+        f"SELECT round_id, round_no, round_type, round_name, status FROM selection_round "
+        f"WHERE round_type IN ({placeholders}) ORDER BY round_no",
+        types,
+    )
+    return cur.fetchall()
+
+
 @app.get("/api/stages")
 def list_stages(user: dict = Depends(current_user)):
     conn = get_conn()
@@ -3234,7 +3439,10 @@ def list_stages(user: dict = Depends(current_user)):
                 "SELECT stage_id, stage_no, stage_code, stage_name, start_time, end_time, "
                 "status, opened_at, closed_at, remark FROM selection_stage ORDER BY stage_no"
             )
-            return {"items": cur.fetchall()}
+            stages = cur.fetchall()
+            for stage in stages:
+                stage["linked_rounds"] = _stage_linked_rounds(cur, stage["stage_code"])
+            return {"items": stages}
     finally:
         conn.close()
 
@@ -3246,14 +3454,107 @@ def open_stage(stage_id: int, user: dict = Depends(current_teacher)):
         with conn.cursor() as cur:
             require_coordinator(cur, user)
             cur.execute(
-                "UPDATE selection_stage SET status = 'OPEN', opened_by = %s, opened_at = NOW(3) "
-                "WHERE stage_id = %s",
+                "SELECT stage_code, status FROM selection_stage WHERE stage_id = %s", (stage_id,)
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="阶段不存在")
+            # 允许同时开启的阶段对：面试考核 ↔ 拟录取确认
+            partner_code = STAGE_PAIRS.get(row["stage_code"])
+            partner_id = None
+            if partner_code:
+                cur.execute(
+                    "SELECT stage_id FROM selection_stage WHERE stage_code = %s", (partner_code,)
+                )
+                partner = cur.fetchone()
+                partner_id = partner["stage_id"] if partner else None
+            # 阶段与轮次联动：开启阶段时同步开放其关联轮次
+            # 先处理轮次再更新阶段，避免与轮次接口内的阶段联动更新相互锁等待
+            linked_round = None
+            target = None
+            if row["stage_code"] == "SUPPLEMENT":
+                # 分轮补录阶段开启时固定开放第二轮补录
+                cur.execute(
+                    "SELECT round_id, status FROM selection_round "
+                    "WHERE round_type = 'SECOND' ORDER BY round_no LIMIT 1"
+                )
+                target = cur.fetchone()
+            else:
+                types = STAGE_ROUND_TYPES.get(row["stage_code"])
+                if types:
+                    cur.execute(
+                        "SELECT round_id, status FROM selection_round WHERE round_type = %s "
+                        "ORDER BY round_no LIMIT 1",
+                        (types[0],),
+                    )
+                    target = cur.fetchone()
+            # 关联轮次已在填报中时不重复开放，避免重复触发自动确认/释放
+            if target and target["status"] != "FILLING":
+                linked_round = _open_round(cur, user, target["round_id"])
+            # 未关联当前阶段的轮次一律关闭填报
+            linked_types = STAGE_ROUND_TYPES.get(row["stage_code"], ())
+            if linked_types:
+                placeholders = ",".join(["%s"] * len(linked_types))
+                cur.execute(
+                    f"UPDATE selection_round SET status = 'CLOSED' "
+                    f"WHERE status = 'FILLING' AND round_type NOT IN ({placeholders})",
+                    linked_types,
+                )
+            else:
+                # 意向填报之前的阶段开启时，尚未开始的填报轮次退回“待进行”
+                if row["stage_code"] in ("BRIEFING", "OPEN_DAY"):
+                    cur.execute(
+                        "UPDATE selection_round SET status = 'PLANNED' WHERE status = 'FILLING'"
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE selection_round SET status = 'CLOSED' WHERE status = 'FILLING'"
+                    )
+            closed_rounds = cur.rowcount
+            # 同一时间只允许一个阶段处于进行中：开启前自动结束其它已开启阶段
+            cur.execute(
+                "SELECT stage_id, status FROM selection_stage WHERE stage_code = 'OPEN_DAY' LIMIT 1"
+            )
+            open_day_stage = cur.fetchone()
+            cur.execute(
+                "UPDATE selection_stage SET status = 'CLOSED', closed_by = %s, closed_at = NOW(3) "
+                "WHERE status = 'OPEN' AND stage_id NOT IN (%s, %s)",
+                (user["teacher_id"], stage_id, partner_id or 0),
+            )
+            closed_others = cur.rowcount
+            # 开放日阶段随其它阶段开启而结束时，清空未签到预约
+            cleared_reservations = 0
+            if (open_day_stage and open_day_stage["status"] == "OPEN"
+                    and open_day_stage["stage_id"] != stage_id):
+                cur.execute("DELETE FROM open_day_reservation WHERE status <> 'CHECKED_IN'")
+                cleared_reservations = cur.rowcount
+            cur.execute(
+                "UPDATE selection_stage SET status = 'OPEN', opened_by = %s, opened_at = NOW(3), "
+                "closed_by = NULL, closed_at = NULL WHERE stage_id = %s",
                 (user["teacher_id"], stage_id),
             )
-            if cur.rowcount == 0:
-                raise HTTPException(status_code=404, detail="阶段不存在")
+            # 开闭同步：成对阶段一并开启
+            opened_pair = None
+            if partner_id:
+                cur.execute(
+                    "UPDATE selection_stage SET status = 'OPEN', opened_by = %s, opened_at = NOW(3), "
+                    "closed_by = NULL, closed_at = NULL WHERE stage_id = %s",
+                    (user["teacher_id"], partner_id),
+                )
+                opened_pair = partner_code
             conn.commit()
-            return {"stageId": stage_id, "status": "OPEN"}
+            return {
+                "stageId": stage_id,
+                "status": "OPEN",
+                "closedOthers": closed_others,
+                "closedRounds": closed_rounds,
+                "linkedRound": linked_round,
+                "clearedReservations": cleared_reservations,
+                "pairedStage": opened_pair,
+            }
+    except HTTPException:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -3265,14 +3566,61 @@ def close_stage(stage_id: int, user: dict = Depends(current_teacher)):
         with conn.cursor() as cur:
             require_coordinator(cur, user)
             cur.execute(
-                "UPDATE selection_stage SET status = 'CLOSED', closed_by = %s, closed_at = NOW(3) "
-                "WHERE stage_id = %s",
-                (user["teacher_id"], stage_id),
+                "SELECT stage_code FROM selection_stage WHERE stage_id = %s", (stage_id,)
             )
-            if cur.rowcount == 0:
+            row = cur.fetchone()
+            if not row:
                 raise HTTPException(status_code=404, detail="阶段不存在")
+            # 开闭同步：成对阶段一并关闭
+            partner_code = STAGE_PAIRS.get(row["stage_code"])
+            partner_id = None
+            if partner_code:
+                cur.execute(
+                    "SELECT stage_id FROM selection_stage WHERE stage_code = %s", (partner_code,)
+                )
+                partner = cur.fetchone()
+                partner_id = partner["stage_id"] if partner else None
+            # 阶段与轮次联动：关闭阶段时同步关闭其正在填报的关联轮次
+            # 先关闭轮次再关闭阶段，避免与轮次接口内的阶段联动更新相互锁等待
+            linked_round = None
+            close_types = {
+                "INTERVIEW": ("FIRST",),
+                "CONFIRM": ("FIRST",),
+                "SUPPLEMENT": ("SECOND", "THIRD"),
+                "ADJUST": ("ADJUST",),
+            }.get(row["stage_code"])
+            if close_types:
+                placeholders = ",".join(["%s"] * len(close_types))
+                cur.execute(
+                    f"SELECT round_id FROM selection_round "
+                    f"WHERE round_type IN ({placeholders}) AND status = 'FILLING' "
+                    f"ORDER BY round_no LIMIT 1",
+                    close_types,
+                )
+                target = cur.fetchone()
+                if target:
+                    linked_round = _close_round(cur, user, target["round_id"])
+            cur.execute(
+                "UPDATE selection_stage SET status = 'CLOSED', closed_by = %s, closed_at = NOW(3) "
+                "WHERE stage_id IN (%s, %s)",
+                (user["teacher_id"], stage_id, partner_id or 0),
+            )
+            # 开放日阶段关闭：清空未签到的预约，仅保留已签到记录
+            cleared_reservations = 0
+            if row["stage_code"] == "OPEN_DAY":
+                cur.execute("DELETE FROM open_day_reservation WHERE status <> 'CHECKED_IN'")
+                cleared_reservations = cur.rowcount
             conn.commit()
-            return {"stageId": stage_id, "status": "CLOSED"}
+            return {
+                "stageId": stage_id,
+                "status": "CLOSED",
+                "linkedRound": linked_round,
+                "clearedReservations": cleared_reservations,
+                "pairedStage": partner_code,
+            }
+    except HTTPException:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -3302,7 +3650,7 @@ def open_round_api(round_id: int, user: dict = Depends(current_teacher)):
         with conn.cursor() as cur:
             require_coordinator(cur, user)
             cur.execute(
-                "SELECT round_no FROM selection_round WHERE round_id = %s",
+                "SELECT round_no, round_type FROM selection_round WHERE round_id = %s",
                 (round_id,),
             )
             round_row = cur.fetchone()
@@ -3538,6 +3886,26 @@ def open_round_api(round_id: int, user: dict = Depends(current_teacher)):
                 )
                 canceled_session_ids.append(session["session_id"])
 
+            # 轮次开放时同步开启对应阶段（同一时间仅一个进行中阶段）
+            # 第三轮补录 -> 分轮补录阶段；统筹调剂 -> 统筹调剂录取阶段
+            stage_by_round = {"THIRD": "SUPPLEMENT", "ADJUST": "ADJUST"}
+            linked_stage_code = stage_by_round.get(round_row["round_type"])
+            opened_stage = None
+            if linked_stage_code:
+                cur.execute(
+                    "UPDATE selection_stage SET status = 'CLOSED', closed_by = %s, closed_at = NOW(3) "
+                    "WHERE status = 'OPEN' AND stage_code <> %s",
+                    (user["teacher_id"], linked_stage_code),
+                )
+                cur.execute(
+                    "UPDATE selection_stage SET status = 'OPEN', opened_by = %s, opened_at = NOW(3), "
+                    "closed_by = NULL, closed_at = NULL "
+                    "WHERE stage_code = %s AND status <> 'OPEN'",
+                    (user["teacher_id"], linked_stage_code),
+                )
+                if cur.rowcount > 0:
+                    opened_stage = linked_stage_code
+
             conn.commit()
             return {
                 "roundId": round_id,
@@ -3549,6 +3917,7 @@ def open_round_api(round_id: int, user: dict = Depends(current_teacher)):
                 "canceledSessions": len(canceled_session_ids),
                 "canceledSessionIds": canceled_session_ids,
                 "keptScoredSessionIds": kept_scored_session_ids,
+                "openedStage": opened_stage,
             }
     finally:
         conn.close()
@@ -3692,6 +4061,22 @@ def close_round_api(round_id: int, user: dict = Depends(current_teacher)):
                     )
                     reminded += 1
 
+            # 第三轮补录关闭时，分轮补录阶段随之关闭
+            closed_supplement_stage = False
+            if round_row["round_type"] == "THIRD":
+                cur.execute(
+                    "UPDATE selection_stage SET status = 'CLOSED', closed_by = %s, closed_at = NOW(3) "
+                    "WHERE stage_code = 'SUPPLEMENT' AND status = 'OPEN'",
+                    (user["teacher_id"],),
+                )
+                closed_supplement_stage = cur.rowcount > 0
+
+            # 轮次关闭后自动发布本轮公示批次（仅收录本轮，不影响其他轮次）
+            auto_publicity = _create_publicity_batch(
+                cur, user, round_id, datetime.now(), datetime.now() + timedelta(days=3),
+                "轮次关闭自动公示",
+            )
+
             conn.commit()
             return {
                 "roundId": round_id,
@@ -3699,6 +4084,8 @@ def close_round_api(round_id: int, user: dict = Depends(current_teacher)):
                 "autoConfirmed": auto_confirmed,
                 "reminded": reminded,
                 "confirmDeadlineMinutes": 30,
+                "closedSupplementStage": closed_supplement_stage,
+                "autoPublicity": auto_publicity,
             }
     except HTTPException:
         conn.rollback()
@@ -3710,64 +4097,105 @@ def close_round_api(round_id: int, user: dict = Depends(current_teacher)):
         conn.close()
 
 
+def _open_round(cur, user: dict, round_id: int) -> dict:
+    """阶段联动：复用轮次开放逻辑。"""
+    return open_round_api(round_id, user)
+
+
+def _close_round(cur, user: dict, round_id: int) -> dict:
+    """阶段联动：复用轮次关闭逻辑。"""
+    return close_round_api(round_id, user)
+
+
+def _sync_publicity_items(cur, batch_id: int, round_id: Optional[int]) -> list:
+    """把批次尚未收录的已确认录取（含自动确认的拟录取）补入批次。"""
+    cur.execute(
+        """
+        SELECT a.admission_id, a.student_id, a.lab_id, a.mentor_id
+        FROM admission a
+        WHERE (%s IS NULL OR a.round_id = %s)
+          AND a.status IN ('CONFIRMED','EFFECTIVE','ENROLLED')
+          AND NOT EXISTS (
+            SELECT 1 FROM publicity_item pi
+            WHERE pi.batch_id = %s AND pi.admission_id = a.admission_id
+          )
+        """,
+        (round_id, round_id, batch_id),
+    )
+    rows = cur.fetchall()
+    for row in rows:
+        cur.execute(
+            """
+            INSERT INTO publicity_item
+              (batch_id, student_id, lab_id, mentor_id, admission_id, item_status)
+            VALUES (%s, %s, %s, %s, %s, 'NORMAL')
+            """,
+            (batch_id, row["student_id"], row["lab_id"], row["mentor_id"],
+             row["admission_id"]),
+        )
+        notify_student(
+            cur, row["student_id"], "选拔结果公示",
+            f"第 {batch_id} 批选拔结果已公示，如有异议请在公示期内提交。",
+            "PUBLICITY", batch_id,
+        )
+    return rows
+
+
+def _create_publicity_batch(cur, user: dict, round_id: Optional[int], start_time,
+                            end_time, remark: Optional[str] = None) -> dict:
+    """创建或更新公示批次：收录该轮已确认录取（含拟录取自动确认的学生）。"""
+    cur.execute(
+        "SELECT batch_id, batch_no FROM publicity_batch WHERE round_id <=> %s "
+        "AND status = 'PUBLISHING' LIMIT 1",
+        (round_id,),
+    )
+    existing = cur.fetchone()
+    if existing:
+        added = _sync_publicity_items(cur, existing["batch_id"], round_id)
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM publicity_item WHERE batch_id = %s",
+            (existing["batch_id"],),
+        )
+        total = cur.fetchone()["c"]
+        if added:
+            write_audit(
+                cur, user["account_id"], "TEACHER", "PUBLICITY_SYNC",
+                "PUBLICITY_BATCH", existing["batch_id"], None,
+                {"round_id": round_id, "added": len(added)},
+            )
+        return {"batchId": existing["batch_id"], "batchNo": existing["batch_no"],
+                "items": total, "added": len(added)}
+    batch_no = f"PUB-{round_id or 0}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    cur.execute(
+        """
+        INSERT INTO publicity_batch
+          (round_id, batch_no, start_time, end_time, status, published_by, remark)
+        VALUES (%s, %s, %s, %s, 'PUBLISHING', %s, %s)
+        """,
+        (round_id, batch_no, start_time, end_time, user["teacher_id"], remark),
+    )
+    batch_id = cur.lastrowid
+    admissions = _sync_publicity_items(cur, batch_id, round_id)
+    write_audit(
+        cur, user["account_id"], "TEACHER", "PUBLICITY_PUBLISH",
+        "PUBLICITY_BATCH", batch_id, None,
+        {"round_id": round_id, "items": len(admissions)},
+    )
+    return {"batchId": batch_id, "batchNo": batch_no, "items": len(admissions),
+            "added": len(admissions)}
+
+
 @app.post("/api/publicity/batches")
 def publish_batch(body: PublicityBatchIn, user: dict = Depends(current_teacher)):
-    """发布公示批次，自动收录该轮有效录取结果。"""
+    """发布公示批次：新建批次或向已有批次补录新确认（含自动确认）的录取结果。"""
     conn = get_conn()
     try:
         with conn.cursor() as cur:
             require_coordinator(cur, user)
-            cur.execute(
-                "SELECT batch_id FROM publicity_batch "
-                "WHERE round_id <=> %s AND status = 'PUBLISHING' LIMIT 1",
-                (body.roundId,),
-            )
-            if cur.fetchone():
-                raise HTTPException(status_code=409, detail="该轮次已有进行中的公示批次")
-            batch_no = f"PUB-{body.roundId or 0}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-            cur.execute(
-                """
-                INSERT INTO publicity_batch
-                  (round_id, batch_no, start_time, end_time, status, published_by, remark)
-                VALUES (%s, %s, %s, %s, 'PUBLISHING', %s, %s)
-                """,
-                (body.roundId, batch_no, body.startTime, body.endTime,
-                 user["teacher_id"], body.remark),
-            )
-            batch_id = cur.lastrowid
-            cur.execute(
-                """
-                SELECT admission_id, student_id, lab_id, mentor_id
-                FROM admission
-                WHERE (%s IS NULL OR round_id = %s)
-                  AND status IN ('OCCUPIED','CONFIRMED','EFFECTIVE','ENROLLED')
-                """,
-                (body.roundId, body.roundId),
-            )
-            admissions = cur.fetchall()
-            for row in admissions:
-                cur.execute(
-                    """
-                    INSERT INTO publicity_item
-                      (batch_id, student_id, lab_id, mentor_id, admission_id, item_status)
-                    VALUES (%s, %s, %s, %s, %s, 'NORMAL')
-                    """,
-                    (batch_id, row["student_id"], row["lab_id"], row["mentor_id"],
-                     row["admission_id"]),
-                )
-            for row in admissions:
-                notify_student(
-                    cur, row["student_id"], "选拔结果公示",
-                    f"第 {batch_id} 批选拔结果已公示，如有异议请在公示期内提交。",
-                    "PUBLICITY", batch_id,
-                )
-            write_audit(
-                cur, user["account_id"], "TEACHER", "PUBLICITY_PUBLISH",
-                "PUBLICITY_BATCH", batch_id, None,
-                {"round_id": body.roundId, "items": len(admissions)},
-            )
+            created = _create_publicity_batch(
+                cur, user, body.roundId, body.startTime, body.endTime, body.remark)
             conn.commit()
-            return {"batchId": batch_id, "batchNo": batch_no, "items": len(admissions)}
+            return created
     except HTTPException:
         conn.rollback()
         raise
@@ -4160,6 +4588,7 @@ def match_adjustments(body: AdjustMatchIn, user: dict = Depends(current_teacher)
                 raise HTTPException(status_code=404, detail="轮次不存在")
             if round_row["round_type"] != "ADJUST":
                 raise HTTPException(status_code=400, detail="仅统筹调剂轮次可执行调剂匹配")
+            require_adjust_round_filling(cur, round_row["round_id"])
 
             cur.execute(
                 """
@@ -4331,6 +4760,7 @@ def negotiate_adjustment(adjust_id: int, body: NegotiateIn,
             adj = cur.fetchone()
             if not adj:
                 raise HTTPException(status_code=404, detail="调剂记录不存在")
+            require_adjust_round_filling(cur, adj["round_id"])
             if adj["status"] not in ("PENDING", "REJECTED"):
                 raise HTTPException(status_code=409, detail="该调剂记录已完成安置，无需再次约谈")
 

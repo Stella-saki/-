@@ -80,8 +80,10 @@ function toast(msg, type) {
   setTimeout(() => el.remove(), 3200);
 }
 
-/* 通用弹窗：替代原生 prompt / confirm（内嵌浏览器不支持原生对话框） */
-function openModal(innerHtml, withField) {
+/* 通用弹窗：替代原生 prompt / confirm（内嵌浏览器不支持原生对话框）
+   collect(mask) 可在关闭前收集自定义表单内容，默认返回输入框值或 true
+   validate(mask) 返回错误文案时阻止关闭并在弹窗内提示 */
+function openModal(innerHtml, withField, collect, validate) {
   return new Promise(resolve => {
     const mask = document.createElement('div');
     mask.className = 'modal-mask';
@@ -92,6 +94,25 @@ function openModal(innerHtml, withField) {
       </div></div>`;
     document.body.appendChild(mask);
     const field = mask.querySelector('#modalField');
+    const showError = msg => {
+      let el = mask.querySelector('.modal-error');
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'modal-error';
+        el.style.cssText = 'margin:8px 0 0;padding:6px 10px;border-radius:6px;'
+          + 'background:#fdecec;color:#c0392b;font-size:13px;';
+        const actions = mask.querySelector('.modal-actions');
+        actions.parentNode.insertBefore(el, actions);
+      }
+      el.textContent = msg;
+    };
+    const confirm = () => {
+      if (validate) {
+        const msg = validate(mask);
+        if (msg) { showError(msg); return; }
+      }
+      close(collect ? collect(mask) : (field ? field.value : true));
+    };
     const close = val => {
       mask.remove();
       document.removeEventListener('keydown', onKey);
@@ -101,13 +122,13 @@ function openModal(innerHtml, withField) {
       if (e.key === 'Escape') close(null);
       if (e.key === 'Enter' && (!withField || withField !== 'textarea')) {
         e.preventDefault();
-        close(field ? field.value : true);
+        confirm();
       }
     };
     document.addEventListener('keydown', onKey);
     mask.addEventListener('click', e => { if (e.target === mask) close(null); });
     mask.querySelector('[data-act="cancel"]').addEventListener('click', () => close(null));
-    mask.querySelector('[data-act="ok"]').addEventListener('click', () => close(field ? field.value : true));
+    mask.querySelector('[data-act="ok"]').addEventListener('click', confirm);
     if (field) setTimeout(() => field.focus(), 30);
   });
 }

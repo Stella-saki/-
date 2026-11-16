@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>学生工作台 · 实训室选报系统</title>
-  <link rel="stylesheet" href="app.css?v=20261112e">
+  <link rel="stylesheet" href="app.css?v=20261116a">
 </head>
 <body>
   <div class="topbar">
@@ -71,7 +71,6 @@
     <section class="panel" id="panel-results">
       <div class="card">
         <h3>拟录取结果</h3>
-        <div class="sub">收到拟录取后请及时确认或放弃；截止时间仅作提醒，不再强制拦截。</div>
         <div id="proposalList"><div class="empty">加载中…</div></div>
       </div>
     </section>
@@ -88,11 +87,10 @@
       </div>
       <div class="card">
         <h3>提交异议</h3>
-        <div class="sub">对公示结果有疑问时，请在公示期内提交，内容不少于 5 个字。</div>
         <div class="row">
           <label class="field grow"><span>公示批次</span><select id="objBatch"></select></label>
           <label class="field grow" style="flex:2 1 320px"><span>异议内容</span>
-            <textarea id="objContent" placeholder="请说明你异议的具体情况…"></textarea>
+            <textarea id="objContent" placeholder="请说明你异议的具体情况（内容不少于5个字）…"></textarea>
           </label>
         </div>
         <button class="btn" id="objSubmit">提交异议</button>
@@ -107,7 +105,7 @@
     <section class="panel" id="panel-openday">
       <div class="card">
         <h3>预约参观实训室</h3>
-        <div class="sub">开放日可到实训室实地了解项目方向与培养安排。</div>
+        <div class="sub" id="odTip">开放日可到实训室实地了解项目方向与培养安排。</div>
         <div class="row">
           <label class="field grow"><span>实训室</span><select id="odLab"></select></label>
           <label class="field"><span>参观日期</span><input type="date" id="odDate"></label>
@@ -141,7 +139,7 @@
     </section>
   </div>
 
-  <script src="common.js?v=20261112e"></script>
+  <script src="common.js?v=20261116a"></script>
   <script>
     const user = requireUser('STUDENT');
     const state = { ctx: null, application: null, selected: new Set(), submitted: false };
@@ -153,7 +151,7 @@
       OCCUPIED: ['待确认', 'orange'], CONFIRMED: ['已确认', 'green'],
       EFFECTIVE: ['已生效', 'green'], ENROLLED: ['已入组', 'green'],
       RELEASED: ['已释放', 'gray'], ABANDONED: ['已放弃', 'red'],
-      PLANNED: ['待进行', 'gray'], OPEN: ['进行中', 'green'],
+      PLANNED: ['待进行', 'gray'], ONGOING: ['进行中', 'green'], OPEN: ['进行中', 'green'],
       CLOSED: ['已结束', 'gray'], EARLY_CLOSED: ['提前结束', 'orange'],
       FILLING: ['填报中', 'green'], INTERVIEWING: ['面试中', 'orange'],
       CONFIRMING: ['确认中', 'orange'], FINISHED: ['已结束', 'gray'],
@@ -197,6 +195,11 @@
           <h3>${esc(r.round_name)} · ${ctx.intentLimit} 个平行意向</h3>
           <div class="sub">开放状态由管理员控制，当前已开放填报　|　服务器时间：${fmtTime(ctx.serverTime)}</div>
           <div class="hint">平行意向按顺序提交，提交后不可撤回、不可修改；同一导师的选报人数不设上限，最终录取以导师可带人数为限。补录轮次仅可填报 1 个意向。</div>`;
+      } else if (r) {
+        html = `
+          <h3>当前未开放填报</h3>
+          <div class="sub">${esc(r.round_name)}尚未开放，请等待意向填报阶段开启</div>
+          <div class="hint warn">意向填报阶段开启后方可选择导师并提交意向。</div>`;
       } else if (next) {
         html = `
           <h3>当前未开放填报</h3>
@@ -528,8 +531,16 @@
     async function loadOpenDay() {
       const sel = document.getElementById('odLab');
       const mine = document.getElementById('odMine');
+      const tip = document.getElementById('odTip');
+      const submitBtn = document.getElementById('odSubmit');
       try {
-        const labs = await api('/api/labs');
+        const [labs, stages] = await Promise.all([api('/api/labs'), api('/api/stages')]);
+        const odStage = (stages.items || []).find(s => s.stage_code === 'OPEN_DAY');
+        const odOpen = !!(odStage && odStage.status === 'OPEN');
+        tip.textContent = odOpen
+          ? '开放日可到实训室实地了解项目方向与培养安排。'
+          : '实训室开放日阶段未开启或已结束，暂不能预约参观。';
+        submitBtn.disabled = !odOpen;
         const openLabs = labs.items.filter(l => l.status === 'OPEN');
         sel.innerHTML = openLabs.length
           ? openLabs.map(l => `<option value="${l.lab_id}">${esc(l.name)}</option>`).join('')

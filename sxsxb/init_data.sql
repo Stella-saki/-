@@ -3,7 +3,10 @@
 -- 依据：数据库设计文档 v1.0 / 项目需求说明书
 -- 适用：空库首次初始化（数据库 sxsxb）
 -- 说明：
---   1. 日程以脚本执行日（D 日）为基准动态生成，意向填报窗口覆盖 D 日至 D+2 日；
+--   1. 日程以脚本执行日（D 日）为基准动态生成，D 日即意向填报日；相对关系按流程图：
+--      宣讲 D-4 14:00；开放日 D-4~D-3；意向填报 D 08:00-12:00；面试 D 12:00~D+1 17:00；
+--      拟录取确认 D+2 08:00-12:00；分轮补录 D+2 12:00~D+3 17:00；统筹调剂 D+4 08:00-12:00；
+--      公示 D+4 12:00 起 1 天。轮次时间窗嵌入对应阶段。
 --      如需固定届次日期，可将 TIMESTAMP(...) 表达式替换为具体日期。
 --   2. 演示账号密码统一为 123456，password_hash 存 SHA-256 无盐摘要；
 --      生产环境请改为 bcrypt / Argon2 并逐账号加盐。
@@ -32,14 +35,14 @@ VALUES
 INSERT INTO selection_stage
   (stage_no, stage_code, stage_name, start_time, end_time, status)
 VALUES
-  (1, 'BRIEFING',  '集中宣讲',        TIMESTAMP(DATE_SUB(@d, INTERVAL 7 DAY), '14:00:00'), TIMESTAMP(DATE_SUB(@d, INTERVAL 7 DAY), '16:00:00'), 'CLOSED'),
-  (2, 'OPEN_DAY',  '实训室开放日',    TIMESTAMP(DATE_SUB(@d, INTERVAL 3 DAY), '09:00:00'), TIMESTAMP(DATE_SUB(@d, INTERVAL 2 DAY), '17:00:00'), 'CLOSED'),
-  (3, 'INTENT',    '意向填报',        TIMESTAMP(@d, '00:00:00'),                           TIMESTAMP(DATE_ADD(@d, INTERVAL 2 DAY), '23:59:59'), 'OPEN'),
-  (4, 'INTERVIEW', '导师初选与面试考核', TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 4 DAY), '17:00:00'), 'PLANNED'),
-  (5, 'CONFIRM',   '拟录取与学生确认',  TIMESTAMP(DATE_ADD(@d, INTERVAL 5 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 5 DAY), '12:00:00'), 'PLANNED'),
-  (6, 'SUPPLEMENT','分轮补录',        TIMESTAMP(DATE_ADD(@d, INTERVAL 5 DAY), '12:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 6 DAY), '17:00:00'), 'PLANNED'),
-  (7, 'ADJUST',    '统筹调剂录取',     TIMESTAMP(DATE_ADD(@d, INTERVAL 7 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 7 DAY), '12:00:00'), 'PLANNED'),
-  (8, 'PUBLICITY', '结果公示与正式入组', TIMESTAMP(DATE_ADD(@d, INTERVAL 7 DAY), '12:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 8 DAY), '12:00:00'), 'PLANNED');
+  (1, 'BRIEFING',  '集中宣讲',        TIMESTAMP(DATE_SUB(@d, INTERVAL 4 DAY), '14:00:00'), TIMESTAMP(DATE_SUB(@d, INTERVAL 4 DAY), '16:00:00'), 'CLOSED'),
+  (2, 'OPEN_DAY',  '实训室开放日',    TIMESTAMP(DATE_SUB(@d, INTERVAL 4 DAY), '14:00:00'), TIMESTAMP(DATE_SUB(@d, INTERVAL 3 DAY), '17:00:00'), 'CLOSED'),
+  (3, 'INTENT',    '意向填报',        TIMESTAMP(@d, '08:00:00'),                           TIMESTAMP(@d, '12:00:00'),                           'OPEN'),
+  (4, 'INTERVIEW', '导师初选与面试考核', TIMESTAMP(@d, '12:00:00'),                         TIMESTAMP(DATE_ADD(@d, INTERVAL 1 DAY), '17:00:00'), 'PLANNED'),
+  (5, 'CONFIRM',   '拟录取与学生确认',  TIMESTAMP(DATE_ADD(@d, INTERVAL 2 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 2 DAY), '12:00:00'), 'PLANNED'),
+  (6, 'SUPPLEMENT','分轮补录',        TIMESTAMP(DATE_ADD(@d, INTERVAL 2 DAY), '12:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '17:00:00'), 'PLANNED'),
+  (7, 'ADJUST',    '统筹调剂录取',     TIMESTAMP(DATE_ADD(@d, INTERVAL 4 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 4 DAY), '12:00:00'), 'PLANNED'),
+  (8, 'PUBLICITY', '结果公示与正式入组', TIMESTAMP(DATE_ADD(@d, INTERVAL 4 DAY), '12:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 5 DAY), '12:00:00'), 'PLANNED');
 
 -- ---------------------------------------------------------
 -- 3. 选拔轮次（首轮 3 个意向；补录每轮 1 个；统筹调剂不填报）
@@ -49,21 +52,21 @@ INSERT INTO selection_round
    fill_start, fill_end, interview_start, interview_end, confirm_start, confirm_end, status)
 VALUES
   (1, 'FIRST',  '首轮选报', 3,
-   TIMESTAMP(@d, '00:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 2 DAY), '23:59:59'),
-   TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 4 DAY), '17:00:00'),
-   TIMESTAMP(DATE_ADD(@d, INTERVAL 5 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 5 DAY), '12:00:00'), 'FILLING'),
+   TIMESTAMP(@d, '08:00:00'), TIMESTAMP(@d, '12:00:00'),
+   TIMESTAMP(@d, '12:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 1 DAY), '17:00:00'),
+   TIMESTAMP(DATE_ADD(@d, INTERVAL 2 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 2 DAY), '12:00:00'), 'PLANNED'),
   (2, 'SECOND', '第二轮补录', 1,
-   TIMESTAMP(DATE_ADD(@d, INTERVAL 5 DAY), '12:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 5 DAY), '15:00:00'),
-   TIMESTAMP(DATE_ADD(@d, INTERVAL 5 DAY), '15:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 5 DAY), '21:00:00'),
-   TIMESTAMP(DATE_ADD(@d, INTERVAL 6 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 6 DAY), '11:00:00'), 'PLANNED'),
+   TIMESTAMP(DATE_ADD(@d, INTERVAL 2 DAY), '12:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '09:00:00'),
+   TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '09:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '12:00:00'),
+   TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '12:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '14:00:00'), 'PLANNED'),
   (3, 'THIRD',  '第三轮补录', 1,
-   TIMESTAMP(DATE_ADD(@d, INTERVAL 6 DAY), '11:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 6 DAY), '13:00:00'),
-   TIMESTAMP(DATE_ADD(@d, INTERVAL 6 DAY), '13:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 6 DAY), '15:00:00'),
-   TIMESTAMP(DATE_ADD(@d, INTERVAL 6 DAY), '15:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 6 DAY), '17:00:00'), 'PLANNED'),
+   TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '14:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '15:00:00'),
+   TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '15:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '16:00:00'),
+   TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '16:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 3 DAY), '17:00:00'), 'PLANNED'),
   (4, 'ADJUST', '统筹调剂', 0,
-   TIMESTAMP(DATE_ADD(@d, INTERVAL 7 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 7 DAY), '12:00:00'),
-   TIMESTAMP(DATE_ADD(@d, INTERVAL 7 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 7 DAY), '12:00:00'),
-   TIMESTAMP(DATE_ADD(@d, INTERVAL 7 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 7 DAY), '12:00:00'), 'PLANNED');
+   TIMESTAMP(DATE_ADD(@d, INTERVAL 4 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 4 DAY), '12:00:00'),
+   TIMESTAMP(DATE_ADD(@d, INTERVAL 4 DAY), '08:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 4 DAY), '11:00:00'),
+   TIMESTAMP(DATE_ADD(@d, INTERVAL 4 DAY), '11:00:00'), TIMESTAMP(DATE_ADD(@d, INTERVAL 4 DAY), '12:00:00'), 'PLANNED');
 
 -- ---------------------------------------------------------
 -- 4. 实训室（名额为硬上限）

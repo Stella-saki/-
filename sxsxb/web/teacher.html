@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>教师工作台 · 实训室选报系统</title>
-  <link rel="stylesheet" href="app.css?v=20261112e">
+  <link rel="stylesheet" href="app.css?v=20261116a">
 </head>
 <body>
   <div class="topbar">
@@ -40,7 +40,6 @@
     <section class="panel" id="panel-intents">
       <div class="card">
         <h3>意向名单</h3>
-        <div class="sub">按实训室查看已提交意向，结合签到与评分发起拟录取。</div>
         <div class="row">
           <label class="field grow"><span>实训室</span><select id="intentLab"></select></label>
           <label class="field grow"><span>轮次</span><select id="intentRound"><option value="">全部轮次</option></select></label>
@@ -54,7 +53,6 @@
     <section class="panel" id="panel-sessions">
       <div class="card" id="createSessionCard">
         <h3>创建面试场次</h3>
-        <div class="sub">排入学生时立即向学生发送面试提醒，并在面试前 1 天、2 小时各生成一次定时提醒。</div>
         <div class="row">
           <label class="field grow"><span>实训室</span><select id="sessLab"></select></label>
           <label class="field grow"><span>轮次</span><select id="sessRound"></select></label>
@@ -95,7 +93,6 @@
     <section class="panel" id="panel-labs">
       <div class="card">
         <h3>实训室信息</h3>
-        <div class="sub" id="labProfileTip">查看各实训室主要方向与导师简介。实训室负责人可编辑本室信息，导师可编辑本人简介，其余内容只读。</div>
         <div id="labProfileList"><div class="empty">加载中…</div></div>
       </div>
     </section>
@@ -104,7 +101,6 @@
     <section class="panel" id="panel-adjust">
       <div class="card">
         <h3>自动调剂匹配</h3>
-        <div class="sub">按“内部调剂 → 跨实训室调剂 → 约谈”三级顺序执行，覆盖全部尚未录取的学生（含未填报有效意向者，无可用名额时转入约谈）。约谈可多轮进行，关闭调剂轮次前必须为所有学生完成安置。</div>
         <div class="row">
           <label class="field grow"><span>轮次</span><select id="adjRound"></select></label>
           <button class="btn" id="adjMatch">运行自动调剂</button>
@@ -151,7 +147,6 @@
     <section class="panel" id="panel-publicity">
       <div class="card">
         <h3>发布公示批次</h3>
-        <div class="sub">系统会自动收录该轮次有效录取结果，并通知学生。</div>
         <div class="row">
           <label class="field grow"><span>轮次</span><select id="pubRound"></select></label>
           <label class="field"><span>公示开始</span><input type="datetime-local" id="pubStart"></label>
@@ -200,7 +195,6 @@
     <section class="panel" id="panel-process">
       <div class="card">
         <h3>选拔阶段</h3>
-        <div class="sub">阶段与轮次可随时手动开关，不受时间窗限制；开启新轮次会自动收起其它填报中的轮次，自动释放此前轮次所有未确认名额，并撤销此前轮次尚未评分的面试场次。关闭轮次时：仅 1 个拟录取自动确认，2~3 个发送确认提醒，30 分钟未确认自动释放名额并进入补录。</div>
         <div id="stageTable"><div class="empty">加载中…</div></div>
       </div>
       <div class="card">
@@ -218,7 +212,7 @@
     </section>
   </div>
 
-  <script src="common.js?v=20261112e"></script>
+  <script src="common.js?v=20261116a"></script>
   <script>
     const user = requireUser('TEACHER');
     const roles = (user && user.roles) || [];
@@ -228,7 +222,7 @@
     const state = { labs: [], rounds: [], currentSession: null, scoreTarget: null };
 
     const STATUS_TEXT = {
-      PLANNED: ['待进行', 'gray'], OPEN: ['进行中', 'green'], CLOSED: ['已结束', 'gray'],
+      PLANNED: ['待进行', 'gray'], ONGOING: ['进行中', 'green'], OPEN: ['进行中', 'green'], CLOSED: ['已结束', 'gray'],
       EARLY_CLOSED: ['提前结束', 'orange'], FILLING: ['填报中', 'green'],
       INTERVIEWING: ['面试中', 'orange'], CONFIRMING: ['确认中', 'orange'],
       PUBLISHING: ['公示中', 'orange'], FINISHED: ['已结束', 'gray'],
@@ -307,7 +301,7 @@
       const currentRound = currentRoundId();
       if (currentRound) document.getElementById('sessRound').value = currentRound;
       fillRoundSelect(document.getElementById('adjRound'), false, 'ADJUST');
-      fillRoundSelect(document.getElementById('pubRound'));
+      fillRoundSelect(document.getElementById('pubRound'), true);
     }
 
     /* 顶栏显示所属实训室与本人剩余录取名额 */
@@ -697,7 +691,7 @@
       if (!labId || !roundId) { toast('请选择实训室与轮次', 'err'); return; }
       if (!startTime || !endTime) { toast('请填写开始与结束时间', 'err'); return; }
       try {
-        await api('/api/interview/sessions', {
+        const created = await api('/api/interview/sessions', {
           method: 'POST',
           body: {
             labId, roundId,
@@ -707,8 +701,10 @@
             judgeTeacherIds
           }
         });
-        toast('场次已创建，可在详情中排入学生', 'ok');
+        toast('场次已创建，可在详情中排入学生' +
+          (created && created.stageSwitched ? '；阶段已自动进入导师初选与面试考核' : ''), 'ok');
         loadSessions();
+        if (created && created.stageSwitched) loadProcess();
       } catch (e) { toast(e.message, 'err'); }
     }
 
@@ -794,9 +790,32 @@
     }
 
     /* ---------------- 调剂 ---------------- */
+    function adjustUsable() {
+      const adj = state.rounds.find(r => r.round_type === 'ADJUST');
+      return !!(isCoordinator && adj && adj.status === 'FILLING');
+    }
+
+    function syncAdjustAvailability() {
+      const usable = adjustUsable();
+      document.getElementById('adjMatch').disabled = !usable;
+      document.getElementById('negSubmit').disabled = !usable;
+      const hint = document.getElementById('adjHint');
+      if (!isCoordinator) {
+        hint.style.display = '';
+        hint.textContent = '仅全院统筹岗可执行调剂与约谈操作。';
+      } else if (!usable) {
+        hint.style.display = '';
+        hint.textContent = '当前不在统筹调剂轮次，自动调剂与约谈暂不可用。';
+      } else {
+        hint.style.display = 'none';
+      }
+    }
+
     async function loadAdjustments() {
       const box = document.getElementById('adjTable');
       const roundId = document.getElementById('adjRound').value;
+      syncAdjustAvailability();
+      const usable = adjustUsable();
       try {
         const data = await api('/api/adjustments' + (roundId ? '?roundId=' + roundId : ''));
         if (!data.items.length) { box.innerHTML = '<div class="empty">暂无调剂记录</div>'; return; }
@@ -807,7 +826,7 @@
             <td>${a.priority_level}</td><td>${pill(a.adjust_type)}</td>
             <td>${a.to_lab_id ? esc(a.to_lab_id) : '-'}</td>
             <td>${pill(a.status)}</td><td>${esc(a.remark || '-')}</td>
-            <td>${a.status === 'PENDING' && isCoordinator ?
+            <td>${a.status === 'PENDING' && usable ?
               `<button class="btn sm negotiate-btn" data-id="${a.adjust_id}">约谈记录</button>` : '—'}</td>
           </tr>`).join('') + '</tbody></table></div>';
 
@@ -824,6 +843,7 @@
     }
 
     async function runMatch() {
+      if (!adjustUsable()) { toast('当前不在统筹调剂轮次，自动调剂暂不可用', 'err'); return; }
       const roundId = Number(document.getElementById('adjRound').value);
       if (!roundId) { toast('当前没有可用的统筹调剂轮次', 'err'); return; }
       if (!await askConfirm('将在统筹调剂轮次内按三级顺序自动匹配全部未录取学生，确定执行吗？')) return;
@@ -836,6 +856,7 @@
 
     async function submitNegotiation() {
       if (!state.adjustId) return;
+      if (!adjustUsable()) { toast('当前不在统筹调剂轮次，约谈暂不可用', 'err'); return; }
       const conclusion = document.getElementById('negConclusion').value;
       const body = {
         method: document.getElementById('negMethod').value,
@@ -920,7 +941,7 @@
           method: 'POST',
           body: { roundId, startTime, endTime, remark: document.getElementById('pubRemark').value.trim() || null }
         });
-        toast('公示已发布，收录 ' + r.items + ' 条结果', 'ok');
+        toast('公示已发布，收录 ' + r.items + ' 条结果' + (r.added ? '（本次新增 ' + r.added + ' 条，含拟录取自动确认）' : ''), 'ok');
         loadPublicity();
       } catch (e) { toast(e.message, 'err'); }
     }
@@ -1022,8 +1043,11 @@
       try {
         const [stages, rounds] = await Promise.all([api('/api/stages'), api('/api/rounds')]);
         stageBox.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
-          '<th>序号</th><th>阶段</th><th>时间</th><th>状态</th><th>操作</th></tr></thead><tbody>' +
+          '<th>序号</th><th>阶段</th><th>关联轮次</th><th>时间</th><th>状态</th><th>操作</th></tr></thead><tbody>' +
           stages.items.map(s => `<tr><td>${s.stage_no}</td><td>${esc(s.stage_name)}</td>
+            <td>${(s.linked_rounds || []).length
+              ? s.linked_rounds.map(r => esc(r.round_name) + ' ' + pill(r.status)).join('、')
+              : '—'}</td>
             <td>${fmtTime(s.start_time)} ~ ${fmtTime(s.end_time)}</td><td>${pill(s.status)}</td>
             <td>${isCoordinator ? `<button class="btn sm ghost stage-open" data-id="${s.stage_id}">开启</button>
               <button class="btn sm ghost stage-close" data-id="${s.stage_id}">关闭</button>` : '—'}</td></tr>`).join('') +
@@ -1039,20 +1063,41 @@
         const bind = (cls, fn) => document.querySelectorAll('.' + cls).forEach(btn =>
           btn.addEventListener('click', () => fn(btn.dataset.id)));
         bind('stage-open', id => api('/api/stages/' + id + '/open', { method: 'POST' })
-          .then(() => { toast('阶段已开启', 'ok'); loadProcess(); }).catch(e => toast(e.message, 'err')));
+          .then(r => {
+            let msg = r.closedOthers ? '阶段已开启，已自动结束其他进行中阶段' : '阶段已开启';
+            if (r.pairedStage) msg += '；已同步开启' + (r.pairedStage === 'CONFIRM' ? '拟录取与学生确认' : '导师初选与面试考核') + '阶段';
+            if (r.linkedRound) msg += '；已同步开放关联轮次';
+            if (r.closedRounds) msg += '；未关联轮次已置为待进行';
+            if (r.clearedReservations) msg += '；已清空 ' + r.clearedReservations + ' 条未签到参观预约';
+            toast(msg, 'ok');
+            loadProcess();
+          }).catch(e => toast(e.message, 'err')));
         bind('stage-close', id => api('/api/stages/' + id + '/close', { method: 'POST' })
-          .then(() => { toast('阶段已关闭', 'ok'); loadProcess(); }).catch(e => toast(e.message, 'err')));
+          .then(r => {
+            let msg = '阶段已关闭';
+            if (r.pairedStage) msg += '；已同步关闭' + (r.pairedStage === 'CONFIRM' ? '拟录取与学生确认' : '导师初选与面试考核') + '阶段';
+            if (r.linkedRound) msg += '；已同步关闭关联轮次（自动确认 ' + (r.linkedRound.autoConfirmed || 0) + ' 人，提醒待确认 ' + (r.linkedRound.reminded || 0) + ' 人）';
+            if (r.linkedRound && r.linkedRound.autoPublicity) msg += '；已自动发布本轮公示（' + r.linkedRound.autoPublicity.items + ' 人）';
+            if (r.clearedReservations) msg += '；已清空 ' + r.clearedReservations + ' 条未签到参观预约';
+            toast(msg, 'ok');
+            loadProcess();
+          }).catch(e => toast(e.message, 'err')));
         bind('round-open', id => api('/api/rounds/' + id + '/open', { method: 'POST' })
           .then(r => {
             let msg = '轮次已开放';
             if (r.released) msg += '，已自动释放上一轮 ' + r.released + ' 个未确认名额';
             if (r.canceledSessions) msg += '，已撤销此前 ' + r.canceledSessions + ' 个面试场次';
+            if (r.openedStage === 'ADJUST') msg += '，已同步开启统筹调剂录取阶段';
+            if (r.openedStage === 'SUPPLEMENT') msg += '，已同步开启分轮补录阶段';
             toast(msg, 'ok');
             loadProcess();
           }).catch(e => toast(e.message, 'err')));
         bind('round-close', id => api('/api/rounds/' + id + '/close', { method: 'POST' })
           .then(r => {
-            toast('轮次已关闭：自动确认 ' + (r.autoConfirmed || 0) + ' 人，提醒待确认 ' + (r.reminded || 0) + ' 人（30 分钟内未确认将释放名额并进入补录）', 'ok');
+            let msg = '轮次已关闭：自动确认 ' + (r.autoConfirmed || 0) + ' 人，提醒待确认 ' + (r.reminded || 0) + ' 人（30 分钟内未确认将释放名额并进入补录）';
+            if (r.closedSupplementStage) msg += '；已同步关闭分轮补录阶段';
+            if (r.autoPublicity) msg += '；已自动发布本轮公示（' + r.autoPublicity.items + ' 人）';
+            toast(msg, 'ok');
             loadProcess();
           }).catch(e => toast(e.message, 'err')));
       } catch (e) {
@@ -1117,13 +1162,17 @@
       try {
         const data = await api('/api/labs/profiles');
         state.introMap = {};
+        state.mentorMap = {};
         if (!data.items.length) {
           box.innerHTML = '<div class="empty">暂无实训室信息</div>';
           return;
         }
         box.innerHTML = data.items.map(lab => {
           const canEditLab = isCoordinator || ownedLabs.includes(lab.lab_id);
-          lab.mentors.forEach(m => { state.introMap[m.mentor_id] = m.intro || ''; });
+          lab.mentors.forEach(m => {
+            state.introMap[m.mentor_id] = m.intro || '';
+            state.mentorMap[m.mentor_id] = m;
+          });
           return `
           <div class="card" style="box-shadow:none;background:#fbfcff;margin-bottom:12px">
             <div class="row" style="align-items:center;gap:8px">
@@ -1137,12 +1186,17 @@
               <div class="sub"><b>实训室简介：</b>${esc(lab.intro || '暂无简介')}</div>
             </div>
             <div id="labEdit-${lab.lab_id}" style="display:none;margin-top:8px">
-              <label class="field"><span>主要方向</span>
-                <input type="text" id="labDir-${lab.lab_id}" maxlength="255" value="${esc(lab.direction || '')}" placeholder="如：AI 应用开发与大模型实践">
+              <label class="field"><span>主要方向 <b style="color:#c0392b">*</b>
+                <span id="labDirCount-${lab.lab_id}" style="float:right;color:#8a93a6;font-weight:400">${(lab.direction || '').length}/255</span></span>
+                <input type="text" id="labDir-${lab.lab_id}" maxlength="255" value="${esc(lab.direction || '')}" placeholder="必填，如：AI 应用开发与大模型实践"
+                  oninput="document.getElementById('labDirCount-${lab.lab_id}').textContent=this.value.length+'/255';document.getElementById('labErr-${lab.lab_id}').style.display='none'">
               </label>
-              <label class="field"><span>实训室简介</span>
-                <textarea id="labIntro-${lab.lab_id}" rows="3" maxlength="1000" placeholder="介绍实训室定位、项目与培养方式">${esc(lab.intro || '')}</textarea>
+              <label class="field"><span>实训室简介
+                <span id="labIntroCount-${lab.lab_id}" style="float:right;color:#8a93a6;font-weight:400">${(lab.intro || '').length}/1000</span></span>
+                <textarea id="labIntro-${lab.lab_id}" rows="3" maxlength="1000" placeholder="介绍实训室定位、项目与培养方式（1000 字以内）"
+                  oninput="document.getElementById('labIntroCount-${lab.lab_id}').textContent=this.value.length+'/1000';document.getElementById('labErr-${lab.lab_id}').style.display='none'">${esc(lab.intro || '')}</textarea>
               </label>
+              <div id="labErr-${lab.lab_id}" style="display:none;margin:4px 0 8px;padding:6px 10px;border-radius:6px;background:#fdecec;color:#c0392b;font-size:13px"></div>
               <div class="row">
                 <button class="btn ok" data-lab-save="${lab.lab_id}">保存</button>
                 <button class="btn ghost" data-lab-cancel="${lab.lab_id}">取消</button>
@@ -1155,7 +1209,7 @@
                   <b>${esc(m.name)}</b>
                   <span class="tag gray">${esc(m.title || '导师')}</span>
                   ${m.teacher_id === user.teacherId
-                    ? `<button class="btn sm ghost" data-intro-edit="${m.mentor_id}">编辑我的简介</button>` : ''}
+                    ? `<button class="btn sm ghost" data-intro-edit="${m.mentor_id}">编辑我的信息</button>` : ''}
                 </div>
                 <div class="sub">研究方向：${esc(m.research_direction || '待补充')}</div>
                 <div class="sub">${esc(m.intro || '暂无简介')}</div>
@@ -1180,9 +1234,19 @@
         box.querySelectorAll('[data-lab-save]').forEach(btn => {
           btn.onclick = async () => {
             const id = btn.dataset.labSave;
-            const direction = document.getElementById('labDir-' + id).value.trim();
-            const intro = document.getElementById('labIntro-' + id).value.trim();
-            if (!direction) { toast('请填写主要方向', 'err'); return; }
+            const directionEl = document.getElementById('labDir-' + id);
+            const introEl = document.getElementById('labIntro-' + id);
+            const errEl = document.getElementById('labErr-' + id);
+            const direction = directionEl.value.trim();
+            const intro = introEl.value.trim();
+            const fail = msg => {
+              errEl.textContent = msg;
+              errEl.style.display = 'block';
+            };
+            errEl.style.display = 'none';
+            if (!direction) { fail('请填写主要方向（不能为空）'); directionEl.focus(); return; }
+            if (direction.length > 255) { fail(`主要方向不超过 255 字，当前 ${direction.length} 字`); directionEl.focus(); return; }
+            if (intro.length > 1000) { fail(`实训室简介不超过 1000 字，当前 ${intro.length} 字`); introEl.focus(); return; }
             btn.disabled = true;
             try {
               await api(`/api/labs/${id}/profile`, { method: 'PATCH', body: { direction, intro } });
@@ -1197,15 +1261,52 @@
         box.querySelectorAll('[data-intro-edit]').forEach(btn => {
           btn.onclick = async () => {
             const mid = btn.dataset.introEdit;
-            const val = await askInput({
-              title: '编辑我的简介', type: 'textarea',
-              value: state.introMap[mid] || '',
-              placeholder: '介绍你的研究方向、项目经历与指导方式（500 字以内）'
-            });
-            if (val === null) return;
+            const m = state.mentorMap[mid] || {};
+            const vals = await openModal(
+              `<h4 class="modal-title">编辑我的信息</h4>` +
+              `<div class="modal-msg">只能修改本人信息；研究方向按实训室分别维护。</div>` +
+              `<label class="field" style="display:block;margin-bottom:10px">` +
+              `<span>职称/职位 <b style="color:#c0392b">*</b>` +
+              `<span id="editTitleCount" style="float:right;color:#8a93a6;font-weight:400">${(m.title || '').length}/50</span></span>` +
+              `<input class="modal-input" id="editTitle" maxlength="50" value="${esc(m.title || '')}" placeholder="必填，如：副教授" ` +
+              `oninput="document.getElementById('editTitleCount').textContent=this.value.length+'/50'"></label>` +
+              `<label class="field" style="display:block;margin-bottom:10px">` +
+              `<span>研究方向` +
+              `<span id="editDirectionCount" style="float:right;color:#8a93a6;font-weight:400">${(m.research_direction || '').length}/255</span></span>` +
+              `<input class="modal-input" id="editDirection" maxlength="255" value="${esc(m.research_direction || '')}" placeholder="如：机器学习与数据挖掘" ` +
+              `oninput="document.getElementById('editDirectionCount').textContent=this.value.length+'/255'"></label>` +
+              `<label class="field" style="display:block">` +
+              `<span>个人简介` +
+              `<span id="editIntroCount" style="float:right;color:#8a93a6;font-weight:400">${(m.intro || '').length}/500</span></span>` +
+              `<textarea class="modal-input" id="editIntro" rows="4" maxlength="500" placeholder="介绍项目经历与指导方式（500 字以内）" ` +
+              `oninput="document.getElementById('editIntroCount').textContent=this.value.length+'/500'">${esc(m.intro || '')}</textarea></label>`,
+              null,
+              mask => ({
+                title: mask.querySelector('#editTitle').value.trim(),
+                direction: mask.querySelector('#editDirection').value.trim(),
+                intro: mask.querySelector('#editIntro').value.trim()
+              }),
+              mask => {
+                const title = mask.querySelector('#editTitle').value.trim();
+                const direction = mask.querySelector('#editDirection').value.trim();
+                const intro = mask.querySelector('#editIntro').value.trim();
+                if (!title) return '请填写职称/职位（不能为空）';
+                if (title.length > 50) return `职称/职位不超过 50 字，当前 ${title.length} 字`;
+                if (direction.length > 255) return `研究方向不超过 255 字，当前 ${direction.length} 字`;
+                if (intro.length > 500) return `个人简介不超过 500 字，当前 ${intro.length} 字`;
+                return '';
+              }
+            );
+            if (!vals) return;
             try {
-              await api('/api/teachers/me/intro', { method: 'PATCH', body: { intro: val.trim() } });
-              toast('简介已更新', 'ok');
+              await api('/api/teachers/me/intro', {
+                method: 'PATCH',
+                body: {
+                  mentorId: Number(mid), title: vals.title,
+                  researchDirection: vals.direction, intro: vals.intro
+                }
+              });
+              toast('个人信息已更新', 'ok');
               loadLabProfiles();
             } catch (e) { toast(e.message, 'err'); }
           };
