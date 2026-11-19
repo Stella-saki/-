@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="scholar-teal">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-content-type" content="presentation" />
+<meta name="x-presentation-version" content="1.0" />
+<meta name="x-presentation-indicator" content="deck-stage .slide" />
+<title>实训室选报系统 · 项目汇报</title>
+<link rel="stylesheet" href="./_shared/fonts.css">
+<link rel="stylesheet" href="./_shared/base.css">
+<link id="theme-link" rel="stylesheet" href="./_shared/themes/scholar-teal.css">
+<link rel="stylesheet" href="./_shared/animations/animations.css">
+<style>
+  .cover-title{font-size:100px;line-height:1.04;margin:0;font-family:var(--font-display)}
+  .section-title{font-size:104px;line-height:1.06;margin:0;font-family:var(--font-display)}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:8px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px 26px;box-shadow:var(--shadow)}
+  .kpi .label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-3);margin:0 0 6px}
+  .kpi .num{font-size:52px;font-weight:800;line-height:1;color:var(--text-1)}
+  .kpi .num .unit{font-size:18px;font-weight:600;color:var(--text-3);margin-left:6px}
+  .kpi p{margin:8px 0 0;font-size:13px;color:var(--text-2)}
+  .roles{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+  .role{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:var(--radius);padding:22px 24px;box-shadow:var(--shadow)}
+  .role h4{margin:0 0 8px;font-size:19px}
+  .role p{margin:0;font-size:14px;line-height:1.65;color:var(--text-2)}
+  .role .tag{display:inline-block;margin-top:12px;font-size:11px;padding:3px 10px;border-radius:999px;background:var(--surface-2);color:var(--text-3)}
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:10px}
+  .flow .step{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 18px 18px;box-shadow:var(--shadow)}
+  .flow .num{width:34px;height:34px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;margin-bottom:12px}
+  .flow h4{margin:0 0 6px;font-size:16px}
+  .flow p{margin:0;font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  .flow .day{display:inline-block;margin-top:10px;font-size:11px;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--text-3)}
+  .funcs{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .func{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;box-shadow:var(--shadow)}
+  .func .idx{font-size:12px;letter-spacing:.16em;color:var(--accent);font-weight:700}
+  .func h4{margin:8px 0 6px;font-size:18px}
+  .func p{margin:0;font-size:13px;line-height:1.6;color:var(--text-2)}
+  .check-list{list-style:none;padding:0;margin:6px 0 0;display:grid;gap:10px}
+  .check-list li{position:relative;padding-left:26px;font-size:15.5px;color:var(--text-2)}
+  .check-list li::before{content:"";position:absolute;left:0;top:7px;width:12px;height:12px;border-radius:3px;background:var(--accent)}
+  .arch{margin-top:12px;display:grid;gap:16px}
+  .arch .tier{display:grid;grid-template-columns:140px 1fr;gap:16px;align-items:stretch}
+  .arch .tname{display:flex;align-items:center;justify-content:center;background:var(--surface-2);border-radius:var(--radius);padding:14px;font-weight:700;font-size:12.5px;letter-spacing:.12em;color:var(--text-2);text-align:center}
+  .arch .cells{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .arch .cell{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 14px;box-shadow:var(--shadow)}
+  .arch .cell h4{margin:0 0 4px;font-size:15px}
+  .arch .cell p{margin:0;font-size:12px;color:var(--text-3);line-height:1.5}
+  .arch .tier.hl .cell{border-top:3px solid var(--accent)}
+  .roadmap{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .roadmap .node{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
+  .roadmap .node b{display:block;font-size:15px;margin-bottom:6px}
+  .roadmap .node span{font-size:12.5px;color:var(--text-2);line-height:1.55}
+</style>
+</head>
+<body data-themes="scholar-teal,navy-formal,indigo-code,corporate-clean" data-theme-base="./_shared/themes/">
+<deck-stage width="1920" height="1080">
+
+  <!-- 1 封面 -->
+  <section class="slide active center tc" data-deck-label="封面" style="background:radial-gradient(60% 55% at 18% 22%,rgba(13,148,136,.16),transparent 65%),radial-gradient(50% 45% at 82% 72%,rgba(234,88,12,.12),transparent 65%),var(--bg)">
+    <div style="max-width:1180px;margin:0 auto">
+      <p class="eyebrow anim-fade-down" data-anim="fade-down">项目汇报 · 2026</p>
+      <h1 class="h1 cover-title anim-fade-up" data-anim="fade-up">实训室选报系统</h1>
+      <div class="divider-accent" style="margin:30px auto"></div>
+      <p class="lede" style="margin:0 auto;max-width:52ch">多轮选拔全流程数字化平台</p>
+      <p class="dim mt-l">信息工程学院 · 学生选报 / 导师面试 / 统筹调剂 / 结果公示</p>
+    </div>
+    <div class="notes">开场：介绍这是一套覆盖“意向填报—面试—拟录取—补录—调剂—公示”的完整选拔系统，今天用 15 分钟讲清楚它解决什么问题、怎么运转、以及验证结果。</div>
+  </section>
+
+  <!-- 2 目录 -->
+  <section class="slide" data-deck-label="目录">
+    <p class="kicker">Contents · 目录</p>
+    <h2 class="h2">今天的四个部分</h2>
+    <div class="grid g2 mt-l anim-stagger-list" data-anim-target>
+      <div class="card"><div class="row"><div class="h3 dim2" style="width:64px">01</div><div><h4>背景与目标</h4><p class="dim">为什么需要一套系统，做到什么程度。</p></div></div></div>
+      <div class="card"><div class="row"><div class="h3 dim2" style="width:64px">02</div><div><h4>角色与流程</h4><p class="dim">四类角色、八个阶段、四次轮次如何协同。</p></div></div></div>
+      <div class="card"><div class="row"><div class="h3 dim2" style="width:64px">03</div><div><h4>核心功能</h4><p class="dim">六大模块，以及四条规则护栏。</p></div></div></div>
+      <div class="card"><div class="row"><div class="h3 dim2" style="width:64px">04</div><div><h4>技术与验证</h4><p class="dim">架构、数据模型与业务链路测试。</p></div></div></div>
+    </div>
+    <div class="deck-footer"><span class="dim2">实训室选报系统</span><span class="slide-number"></span></div>
+    <div class="notes">目录页快速带过，告诉大家后面每一部分都会落到“系统里具体怎么做”。</div>
+  </section>
+
+  <!-- 3 章节一 -->
+  <section class="slide center tc" data-deck-label="章节一" style="background:radial-gradient(55% 50% at 20% 30%,rgba(13,148,136,.14),transparent 70%),var(--bg)">
+    <div style="max-width:900px;margin:0 auto">
+      <p class="kicker anim-fade-down" data-anim="fade-down">Section · 01</p>
+      <h1 class="section-title anim-rise-in" data-anim="rise-in">背景与 <span class="gradient-text">目标</span></h1>
+      <div class="divider-accent" style="margin:26px auto"></div>
+      <p class="lede" style="margin:0 auto">把分散的表格与人工核对，变成一条可追溯的线上流程。</p>
+    </div>
+  </section>
+
+  <!-- 4 背景与痛点 -->
+  <section class="slide" data-deck-label="背景与痛点">
+    <p class="kicker">Background · 现状</p>
+    <h2 class="h2">选拔季的四类重复劳动</h2>
+    <div class="grid g2 mt-l anim-stagger-list" data-anim-target>
+      <div class="card"><h4>意向收集靠表格</h4><p class="dim">志愿顺序、室内调剂与跨室调剂意愿分散在多份表格，人工汇总容易遗漏或串行。</p></div>
+      <div class="card"><h4>面试组织靠人工</h4><p class="dim">场次、评委、签到与评分标准不统一，成绩口径不一致，事后难以追溯。</p></div>
+      <div class="card"><h4>名额核对靠经验</h4><p class="dim">实训室名额与导师容量需要反复核对，临近截止时容易出现超录或空置。</p></div>
+      <div class="card"><h4>多轮流程信息断层</h4><p class="dim">补录、调剂、确认、公示各自为政，学生不清楚下一步，老师也缺少统一视图。</p></div>
+    </div>
+    <p class="lede mt-l">目标：把选拔规则写进系统，让每一步可计算、可追溯、可解释。</p>
+    <div class="deck-footer"><span class="dim2">实训室选报系统</span><span class="slide-number"></span></div>
+    <div class="notes">强调四个痛点都来自真实选拔场景，系统的价值是减少重复核对，并让规则自动生效。</div>
+  </section>
+
+  <!-- 5 系统全景 -->
+  <section class="slide" data-deck-label="系统全景">
+    <p class="kicker">Overview · 系统全景</p>
+    <h2 class="h2">一套系统，承载完整选拔周期</h2>
+    <div class="kpis anim-stagger-list" data-anim-target>
+      <div class="kpi"><p class="label">数据表</p><div class="num"><span class="counter" data-to="27">0</span><span class="unit">张</span></div><p>覆盖账号、意向、面试、录取、调剂与公示。</p></div>
+      <div class="kpi"><p class="label">实训室</p><div class="num"><span class="counter" data-to="4">0</span><span class="unit">个</span></div><p>AI 应用、智能硬件、数据智能、全栈开发。</p></div>
+      <div class="kpi"><p class="label">导师</p><div class="num"><span class="counter" data-to="12">0</span><span class="unit">位</span></div><p>每室 3 位，含研究方向与导师简介。</p></div>
+      <div class="kpi"><p class="label">选拔阶段</p><div class="num"><span class="counter" data-to="8">0</span><span class="unit">个</span></div><p>从宣讲、开放日到公示与正式入组。</p></div>
+      <div class="kpi"><p class="label">选拔轮次</p><div class="num"><span class="counter" data-to="4">0</span><span class="unit">轮</span></div><p>首轮、两轮补录与统筹调剂。</p></div>
+      <div class="kpi"><p class="label">演示账号</p><div class="num"><span class="counter" data-to="22">0</span><span class="unit">个</span></div><p>12 位教师 + 10 名学生，密码统一。</p></div>
+    </div>
+    <p class="lede mt-l" style="max-width:80ch">名额是硬约束：4 个实训室共 40 个名额，导师容量单独校验，任何环节都不允许突破。</p>
+    <div class="deck-footer"><span class="dim2">实训室选报系统</span><span class="slide-number"></span></div>
+    <div class="notes">这里用六个数字建立整体印象，强调“不是单点工具，而是完整周期”。</div>
+  </section>
+
+  <!-- 6 章节二 -->
+  <section class="slide center tc" data-deck-label="章节二" style="background:radial-gradient(55% 50% at 80% 30%,rgba(234,88,12,.12),transparent 70%),var(--bg)">
+    <div style="max-width:900px;margin:0 auto">
+      <p class="kicker anim-fade-down" data-anim="fade-down">Section · 02</p>
+      <h1 class="section-title anim-rise-in" data-anim="rise-in">角色与 <span class="gradient-text">流程</span></h1>
+      <div class="divider-accent" style="margin:26px auto"></div>
+      <p class="lede" style="margin:0 auto">四类角色，八个阶段，四次轮次，各司其职又彼此衔接。</p>
+    </div>
+  </section>
+
+  <!-- 7 角色与权限 -->
+  <section class="slide" data-deck-label="角色与权限">
+    <p class="kicker">Roles · 权限模型</p>
+    <h2 class="h2">四类角色，数据范围各不相同</h2>
+    <div class="roles anim-stagger-list" data-anim-target>
+      <div class="role"><h4>学生</h4><p>查看实训室与导师信息，填报 3 个平行志愿，表达室内/跨室调剂意愿；确认拟录取，查看公示并提交异议。</p><span class="tag">仅本人数据</span></div>
+      <div class="role"><h4>导师</h4><p>查看本室意向与候选人，创建面试场次、安排评委、评分与评语，提出拟录取建议。</p><span class="tag">本实训室范围</span></div>
+      <div class="role"><h4>实训室负责人</h4><p>维护本室简介与方向，统筹本室面试安排、名额使用与结果提交，查看本室统计。</p><span class="tag">本实训室管理</span></div>
+      <div class="role"><h4>全院统筹岗</h4><p>开闭阶段与轮次，执行补录与统筹调剂，发布公示、处理异议，并可一键重置演示数据库。</p><span class="tag">全院数据</span></div>
+    </div>
+    <div class="deck-footer"><span class="dim2">实训室选报系统</span><span class="slide-number"></span></div>
+    <div class="notes">说明权限不是简单的“老师/学生”，而是按岗位与数据范围分层；统筹岗拥有跨室调度能力。</div>
+  </section>
+
+  <!-- 8 选拔流程 -->
+  <section class="slide" data-deck-label="选拔流程">
+    <p class="kicker">Process · 全流程</p>
+    <h2 class="h2">八个阶段，一条时间线</h2>
+    <div class="flow anim-stagger-list" data-anim-target>
+      <div class="step"><div class="num">1</div><h4>集中宣讲</h4><p>介绍实训室方向、培养安排与考核要求。</p><span class="day">D-4 14:00</span></div>
+      <div class="step"><div class="num">2</div><h4>实训室开放日</h4><p>学生实地参观，与导师面对面交流。</p><span class="day">D-4 ~ D-3</span></div>
+      <div class="step"><div class="num">3</div><h4>意向填报</h4><p>最多 3 个平行志愿，可表达调剂意愿。</p><span class="day">D 08:00–12:00</span></div>
+      <div class="step"><div class="num">4</div><h4>初选与面试</h4><p>导师筛选候选人，组织场次与多评委评分。</p><span class="day">D 12:00 ~ D+1 17:00</span></div>
+      <div class="step"><div class="num">5</div><h4>拟录取确认</h4><p>学生在线确认，超时未确认自动释放名额。</p><span class="day">D+2 08:00–12:00</span></div>
+      <div class="step"><div class="num">6</div><h4>分轮补录</h4><p>仅未录取学生可填报，每轮 1 个志愿。</p><span class="day">D+2 12:00 ~ D+3 17:00</span></div>
+      <div class="step"><div class="num">7</div><h4>统筹调剂</h4><p>内部调剂 → 跨室调剂 → 约谈三级安置。</p><span class="day">D+4 08:00–12:00</span></div>
+      <div class="step"><div class="num">8</div><h4>公示与入组</h4><p>发布公示批次，处理异议，正式入组。</p><span class="day">D+4 12:00 起</span></div>
+    </div>
+    <div class="deck-footer"><span class="dim2">实训室选报系统</span><span class="slide-number"></span></div>
+    <div class="notes">按时间线讲一遍学生视角：什么时候填、什么时候面试、什么时候确认，最后如何公示。</div>
+  </section>
+
+  <!-- 9 阶段与轮次规则 -->
+  <section class="slide" data-deck-label="阶段与轮次规则">
+    <p class="kicker">Rules · 规则设计</p>
+    <h2 class="h2">阶段管节奏，轮次管志愿</h2>
+    <div class="grid g2 mt-l">
+      <div class="card anim-fade-left" data-anim="fade-left">
+        <h3>阶段：把节奏固定下来</h3>
+        <ul class="mt-m">
+          <li>— 8 个阶段以 D 日动态排期，时间窗清晰</li>
+          <li>— 同一时间仅允许一个阶段处于进行中</li>
+          <li>— 阶段开启/关闭联动对应轮次</li>
+          <li>— 公示前自动校验调剂是否完成</li>
+        </ul>
+      </div>
+      <div class="card anim-fade-right" data-anim="fade-right">
+        <h3>轮次：把志愿与名额算清楚</h3>
+        <ul class="mt-m">
+          <li>— 首轮最多 3 个平行志愿</li>
+          <li>— 第二轮、第三轮补录各 1 个志愿</li>
+          <li>— 统筹调剂轮次不填报，直接匹配</li>
+          <li>— 实训室名额与导师容量双重上限</li>
+        </ul>
+      </div>
+    </div>
+    <p class="lede mt-l">规则不靠提醒，靠系统在关键节点自动校验与拦截。</p>
+    <div class="deck-footer"><span class="dim2">实训室选报系统</span><span class="slide-number"></span></div>
+    <div class="notes">强调“阶段”与“轮次”的分工：一个控制时间节奏，一个控制志愿与名额。</div>
+  </section>
+
+  <!-- 10 章节三 -->
+  <section class="slide center tc" data-deck-label="章节三" style="background:radial-gradient(55% 50% at 25% 70%,rgba(13,148,136,.14),transparent 70%),var(--bg)">
+    <div style="max-width:900px;margin:0 auto">
+      <p class="kicker anim-fade-down" data-anim="fade-down">Section · 03</p>
+      <h1 class="section-title anim-rise-in" data-anim="rise-in">核心 <span class="gradient-text">功能</span></h1>
+      <div class="divider-accent" style="margin:26px auto"></div>
+      <p class="lede" style="margin:0 auto">从填报到公示，每个动作都有规则兜底。</p>
+    </div>
+  </section>
+
+  <!-- 11 功能地图 -->
+  <section class="slide" data-deck-label="功能地图">
+    <p class="kicker">Modules · 功能地图</p>
+    <h2 class="h2">六个模块，串起完整闭环</h2>
+    <div class="funcs anim-stagger-list" data-anim-target>
+      <div class="func"><div class="idx">01</div><h4>意向填报</h4><p>3 个平行志愿，附带室内/跨室调剂意愿；提交后进入轮次候选池。</p></div>
+      <div class="func"><div class="idx">02</div><h4>面试管理</h4><p>场次、评委、签到、提醒一体化；四维百分制评分，至少 2 名评委。</p></div>
+      <div class="func"><div class="idx">03</div><h4>拟录取确认</h4><p>拟录取在线确认；超时未确认自动释放名额，并提醒进入补录。</p></div>
+      <div class="func"><div class="idx">04</div><h4>分轮补录</h4><p>仅未录取学生可参加；第二轮、第三轮各 1 个志愿，名额实时回收。</p></div>
+      <div class="func"><div class="idx">05</div><h4>统筹调剂</h4><p>按内部调剂、跨室调剂、约谈三级顺序安置，直到每名学生落实实训室。</p></div>
+      <div class="func"><div class="idx">06</div><h4>公示与异议</h4><p>按轮次发布公示批次，学生查看结果、提交异议，处理过程全程留痕。</p></div>
+    </div>
+    <p class="lede mt-l" style="max-width:90ch">配套能力：站内通知、操作审计、名额流水、超时任务与角色权限校验。</p>
+    <div class="deck-footer"><span class="dim2">实训室选报系统</span><span class="slide-number"></span></div>
+    <div class="notes">按学生从填报到入组的顺序讲六个模块，最后补一句配套的通知与审计能力。</div>
+  </section>
+
+  <!-- 12 规则护栏 -->
+  <section class="slide" data-deck-label="规则护栏">
+    <p class="kicker">Guardrails · 规则护栏</p>
+    <h2 class="h2">四条护栏，防止流程“走偏”</h2>
+    <div class="grid g2 mt-l anim-stagger-list" data-anim-target>
+      <div class="card"><h4>名额与容量双校验</h4><p class="dim">实训室名额为硬上限，导师容量单独校验；任何调剂、约谈、补录落库前都会检查。</p></div>
+      <div class="card"><h4>确认超时自动释放</h4><p class="dim">拟录取 30 分钟内未确认自动释放，名额回到池中，学生进入后续补录。</p></div>
+      <div class="card"><h4>调剂未完成禁止公示</h4><p class="dim">仍有待约谈或未落实实训室的学生时，开启公示与发布公示都会被拦截，并弹窗提示人数。</p></div>
+      <div class="card"><h4>一键重置演示数据库</h4><p class="dim">负责人与统筹岗可在“阶段与轮次”页重置数据库，删库重建并重新导入种子数据，约 1 秒完成。</p></div>
+    </div>
+    <div class="deck-footer"><span class="dim2">实训室选报系统</span><span class="slide-number"></span></div>
+    <div class="notes">这页是系统“规则内嵌”的体现：不再依赖老师记忆，而是关键动作前强制校验。</div>
+  </section>
+
+  <!-- 13 章节四 -->
+  <section class="slide center tc" data-deck-label="章节四" style="background:radial-gradient(55% 50% at 75% 35%,rgba(234,88,12,.12),transparent 70%),var(--bg)">
+    <div style="max-width:900px;margin:0 auto">
+      <p class="kicker anim-fade-down" data-anim="fade-down">Section · 04</p>
+      <h1 class="section-title anim-rise-in" data-anim="rise-in">技术与 <span class="gradient-text">验证</span></h1>
+      <div class="divider-accent" style="margin:26px auto"></div>
+      <p class="lede" style="margin:0 auto">FastAPI + MySQL 8，27 张表支撑全流程。</p>
+    </div>
+  </section>
+
+  <!-- 14 技术架构 -->
+  <section class="slide" data-deck-label="技术架构">
+    <p class="kicker">Architecture · 技术架构</p>
+    <h2 class="h2">轻量三层，部署简单</h2>
+    <div class="arch anim-stagger-list" data-anim-target>
+      <div class="tier"><div class="tname">展示层</div>
+        <div class="cells">
+          <div class="cell"><h4>学生端</h4><p>填报、确认、查看结果与异议</p></div>
+          <div class="cell"><h4>教师端</h4><p>面试、评分、调剂、公示</p></div>
+          <div class="cell"><h4>原生前端</h4><p>HTML / CSS / JavaScript</p></div>
+          <div class="cell"><h4>通知轮询</h4><p>站内消息实时刷新</p></div>
+        </div>
+      </div>
+      <div class="tier hl"><div class="tname">服务层</div>
+        <div class="cells">
+          <div class="cell"><h4>FastAPI</h4><p>REST 接口与请求校验</p></div>
+          <div class="cell"><h4>Token 鉴权</h4><p>HMAC 签名，2 小时有效</p></div>
+          <div class="cell"><h4>角色权限</h4><p>按岗位与数据范围授权</p></div>
+          <div class="cell"><h4>后台任务</h4><p>提醒 30s / 超时释放 60s</p></div>
+        </div>
+      </div>
+      <div class="tier"><div class="tname">数据层</div>
+        <div class="cells">
+          <div class="cell"><h4>MySQL 8.0</h4><p>InnoDB，utf8mb4</p></div>
+          <div class="cell"><h4>27 张表</h4><p>覆盖全业务链路</p></div>
+          <div class="cell"><h4>事务与行锁</h4><p>保障名额与状态一致</p></div>
+          <div class="cell"><h4>审计与流水</h4><p>关键操作可追溯</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="deck-footer"><span class="dim2">实训室选报系统</span><span class="slide-number"></span></div>
+    <div class="notes">技术选型刻意保持轻量：一个 Python 服务 + 一个 MySQL 库 + 静态页面，便于在学院环境部署与演示。</div>
+  </section>
+
+  <!-- 15 验证结果 -->
+  <section class="slide" data-deck-label="验证结果">
+    <p class="kicker">Validation · 验证结果</p>
+    <h2 class="h2">链路跑通，规则可验证</h2>
+    <div class="roadmap anim-stagger-list" data-anim-target style="margin-bottom:26px">
+      <div class="node"><b>27 张表</b><span>建表与种子数据一次导入成功</span></div>
+      <div class="node"><b>22 个账号</b><span>教师与学生账号登录正常</span></div>
+      <div class="node"><b>约 1 秒</b><span>删库、重建与初始化总耗时</span></div>
+      <div class="node"><b>4 项拦截</b><span>权限、名额、超时、公示校验</span></div>
+    </div>
+    <ul class="check-list">
+      <li>业务链路：登录 → 填报 → 面试评分 → 拟录取确认 → 补录 → 统筹调剂 → 公示，全流程通过。</li>
+      <li>权限校验：普通导师调用数据库重置接口返回 403，负责人与统筹岗可执行。</li>
+      <li>规则拦截：统筹调剂仍有 10 人待约谈时，开启公示阶段与发布公示均返回 409，并弹窗提示。</li>
+      <li>数据完整性：4 个实训室简介、12 位导师简介、阶段与轮次排期全部随初始化写入。</li>
+    </ul>
+    <div class="deck-footer"><span class="dim2">实训室选报系统</span><span class="slide-number"></span></div>
+    <div class="notes">用实际验证结果收尾：不仅功能能跑，关键规则也有可复现的拦截证据。</div>
+  </section>
+
+  <!-- 16 结语 -->
+  <section class="slide center tc" data-deck-label="结语">
+    <div>
+      <h1 class="h1 anim-fade-up" data-anim="fade-up" style="font-size:150px;line-height:1"><span class="gradient-text">谢谢聆听</span></h1>
+      <p class="lede" style="margin:22px auto 0">实训室选报系统 · 演示环境：http://127.0.0.1:8000/</p>
+      <p class="dim mt-m">方向键翻页 · F 全屏</p>
+    </div>
+    <div class="notes">结束页留出提问时间；如需现场演示，可直接打开 8000 端口，使用 T001 / 123456 登录。</div>
+  </section>
+
+</deck-stage>
+<script src="./_shared/runtime.js"></script>
+<script src="./_shared/echarts-theme-sync.js"></script>
+</body></html>

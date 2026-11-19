@@ -48,7 +48,9 @@ async function api(path, options = {}) {
       clearSession();
       if (!/index\.html$|\/$/.test(location.pathname)) location.href = 'index.html';
     }
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.status = resp.status;
+    throw err;
   }
   return data;
 }
@@ -157,6 +159,29 @@ function askConfirm(message, title) {
   const html = `<h4 class="modal-title">${esc(title || '请确认')}</h4>` +
     `<div class="modal-msg">${esc(message || '')}</div>`;
   return openModal(html, null).then(val => val !== null);
+}
+
+/* 提示弹窗：仅“我知道了”一个按钮，用于展示必须知晓的提醒 */
+function showNotice(message, title) {
+  return new Promise(resolve => {
+    const mask = document.createElement('div');
+    mask.className = 'modal-mask';
+    mask.innerHTML = `<div class="modal-box"><h4 class="modal-title">${esc(title || '提示')}</h4>` +
+      `<div class="modal-msg">${esc(message || '')}</div>` +
+      `<div class="modal-actions"><button class="btn" data-act="ok">我知道了</button></div></div>`;
+    document.body.appendChild(mask);
+    const close = () => {
+      mask.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve();
+    };
+    const onKey = e => {
+      if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); close(); }
+    };
+    document.addEventListener('keydown', onKey);
+    mask.addEventListener('click', e => { if (e.target === mask) close(); });
+    mask.querySelector('[data-act="ok"]').addEventListener('click', close);
+  });
 }
 
 function requireUser(type) {

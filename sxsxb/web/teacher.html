@@ -198,7 +198,10 @@
         <div id="stageTable"><div class="empty">加载中…</div></div>
       </div>
       <div class="card">
-        <h3>轮次管理</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
+          <h3 style="margin:0">轮次管理</h3>
+          <button class="btn danger sm" id="resetDatabase" style="display:none">重置数据库</button>
+        </div>
         <div id="roundTable"><div class="empty">加载中…</div></div>
       </div>
       <div class="card">
@@ -219,6 +222,7 @@
     const isCoordinator = roles.some(r => r.roleCode === 'COORDINATOR');
     const ownedLabs = roles.filter(r => r.roleCode === 'LAB_OWNER').map(r => r.scopeLabId);
     const mentorLabs = roles.filter(r => r.roleCode === 'MENTOR').map(r => r.scopeLabId);
+    const canResetDb = isCoordinator || ownedLabs.length > 0;
     const state = { labs: [], rounds: [], currentSession: null, scoreTarget: null };
 
     const STATUS_TEXT = {
@@ -254,6 +258,27 @@
       const labs = allowedLabs();
       const opts = labs.map(l => `<option value="${l.lab_id}">${esc(l.name)}</option>`).join('');
       el.innerHTML = (includeAll ? '<option value="">全部实训室</option>' : '') + opts;
+    }
+
+    /* 约谈分配实训室：显示剩余容量，容量为 0 的不可选择 */
+    function fillNegLab() {
+      const el = document.getElementById('negLab');
+      const labs = allowedLabs();
+      el.innerHTML = labs.map(l => {
+        const remain = Math.max(0, (l.quota || 0) - (l.occupied || 0));
+        return `<option value="${l.lab_id}"${remain <= 0 ? ' disabled' : ''}>` +
+          `${esc(l.name)}（剩余 ${remain}${remain <= 0 ? '，已满' : ''}）</option>`;
+      }).join('');
+      const firstAvailable = labs.find(l => Math.max(0, (l.quota || 0) - (l.occupied || 0)) > 0);
+      if (firstAvailable) el.value = String(firstAvailable.lab_id);
+    }
+
+    async function refreshNegLabs() {
+      try {
+        const labs = await api('/api/labs');
+        state.labs = labs.items;
+        fillNegLab();
+      } catch (e) { /* 保留现有选项，提交时由后端兜底校验 */ }
     }
 
     function fillRoundSelect(el, includeAll, onlyType, keepAll) {
@@ -295,7 +320,7 @@
       fillLabSelect(document.getElementById('intentLab'));
       fillLabSelect(document.getElementById('sessLab'));
       fillLabSelect(document.getElementById('odLabFilter'), true);
-      fillLabSelect(document.getElementById('negLab'));
+      fillNegLab();
       fillRoundSelect(document.getElementById('intentRound'), true, null, true);
       fillRoundSelect(document.getElementById('sessRound'));
       const currentRound = currentRoundId();
@@ -442,12 +467,14 @@
           data.items.map(i => `<tr>
             <td>${i.intent_id}</td>
             <td>${esc(i.student_no)}</td><td>${esc(i.student_name)}</td>
-            <td>${esc(i.mentor_name)}</td><td>${esc(i.round_name)}</td>
+            <td>${esc(i.mentor_name)}</td><td>${esc(i.round_name)}${i.expired ? ' <span class="pill red">已过期</span>' : ''}</td>
             <td>${pill(i.status)}</td>
             <td>${i.checkin_status ? pill(i.checkin_status) : '-'}</td>
             <td>${i.avg_total === null ? '-' : i.avg_total}</td>
             <td>${i.judge_count || 0}</td>
             <td>${i.proposed ? '<span class="pill green">已拟录取</span>' :
+              i.absent ? '<span class="pill red">缺考</span>' :
+              i.expired ? '<span class="pill red">已过期</span>' :
               `<button class="btn sm propose-btn" data-intent="${i.intent_id}"
                 data-name="${esc(i.student_name)}"
                 ${i.checkin_status === 'CHECKED_IN' && i.avg_total !== null ? '' : 'disabled'}>拟录取</button>`}</td>
@@ -831,8 +858,9 @@
           </tr>`).join('') + '</tbody></table></div>';
 
         box.querySelectorAll('.negotiate-btn').forEach(btn => {
-          btn.addEventListener('click', () => {
+          btn.addEventListener('click', async () => {
             state.adjustId = Number(btn.dataset.id);
+            await refreshNegLabs();
             document.getElementById('negotiateCard').style.display = '';
             document.getElementById('negotiateCard').scrollIntoView({ behavior: 'smooth' });
           });
@@ -850,6 +878,7 @@
       try {
         const r = await api('/api/adjustments/match', { method: 'POST', body: { roundId } });
         toast(`匹配完成：候选 ${r.candidates}，成功 ${r.matched}，待约谈 ${r.pendingNegotiation}`, 'ok');
+        await refreshNegLabs();
         loadAdjustments();
       } catch (e) { toast(e.message, 'err'); }
     }
@@ -858,15 +887,17 @@
       if (!state.adjustId) return;
       if (!adjustUsable()) { toast('当前不在统筹调剂轮次，约谈暂不可用', 'err'); return; }
       const conclusion = document.getElementById('negConclusion').value;
+      const labSel = document.getElementById('negLab');
+      const labOpt = labSel.selectedOptions[0];
       const body = {
         method: document.getElementById('negMethod').value,
         willingness: document.getElementById('negWillingness').value,
         conclusion,
-        finalLabId: Number(document.getElementById('negLab').value) || null,
+        finalLabId: Number(labSel.value) || null,
         remark: document.getElementById('negRemark').value.trim() || null
       };
-      if (conclusion === 'ACCEPT' && !body.finalLabId) {
-        toast('接受调剂需指定最终实训室', 'err');
+      if (conclusion === 'ACCEPT' && (!body.finalLabId || (labOpt && labOpt.disabled))) {
+        toast('所选实训室已满或未选择，请选择仍有剩余容量的实训室', 'err');
         return;
       }
       try {
@@ -874,6 +905,7 @@
         toast(conclusion === 'ACCEPT' ? '已安置并自动确认录取' : '已记录本次约谈，学生仍待安置，可继续约谈', 'ok');
         document.getElementById('negotiateCard').style.display = 'none';
         state.adjustId = null;
+        await refreshNegLabs();
         loadAdjustments();
       } catch (e) { toast(e.message, 'err'); }
     }
@@ -943,7 +975,13 @@
         });
         toast('公示已发布，收录 ' + r.items + ' 条结果' + (r.added ? '（本次新增 ' + r.added + ' 条，含拟录取自动确认）' : ''), 'ok');
         loadPublicity();
-      } catch (e) { toast(e.message, 'err'); }
+      } catch (e) {
+        if (e.status === 409) {
+          showNotice(e.message, '暂不能发布结果公示');
+        } else {
+          toast(e.message, 'err');
+        }
+      }
     }
 
     async function loadObjections() {
@@ -1049,7 +1087,7 @@
               ? s.linked_rounds.map(r => esc(r.round_name) + ' ' + pill(r.status)).join('、')
               : '—'}</td>
             <td>${fmtTime(s.start_time)} ~ ${fmtTime(s.end_time)}</td><td>${pill(s.status)}</td>
-            <td>${isCoordinator ? `<button class="btn sm ghost stage-open" data-id="${s.stage_id}">开启</button>
+            <td>${isCoordinator ? `<button class="btn sm ghost stage-open" data-id="${s.stage_id}" data-code="${s.stage_code}">开启</button>
               <button class="btn sm ghost stage-close" data-id="${s.stage_id}">关闭</button>` : '—'}</td></tr>`).join('') +
           '</tbody></table></div>';
         roundBox.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr>' +
@@ -1061,8 +1099,8 @@
           '</tbody></table></div>';
 
         const bind = (cls, fn) => document.querySelectorAll('.' + cls).forEach(btn =>
-          btn.addEventListener('click', () => fn(btn.dataset.id)));
-        bind('stage-open', id => api('/api/stages/' + id + '/open', { method: 'POST' })
+          btn.addEventListener('click', () => fn(btn.dataset.id, btn)));
+        bind('stage-open', (id, btn) => api('/api/stages/' + id + '/open', { method: 'POST' })
           .then(r => {
             let msg = r.closedOthers ? '阶段已开启，已自动结束其他进行中阶段' : '阶段已开启';
             if (r.pairedStage) msg += '；已同步开启' + (r.pairedStage === 'CONFIRM' ? '拟录取与学生确认' : '导师初选与面试考核') + '阶段';
@@ -1071,7 +1109,13 @@
             if (r.clearedReservations) msg += '；已清空 ' + r.clearedReservations + ' 条未签到参观预约';
             toast(msg, 'ok');
             loadProcess();
-          }).catch(e => toast(e.message, 'err')));
+          }).catch(e => {
+            if (btn.dataset.code === 'PUBLICITY' && e.status === 409) {
+              showNotice(e.message, '暂不能开启结果公示');
+            } else {
+              toast(e.message, 'err');
+            }
+          }));
         bind('stage-close', id => api('/api/stages/' + id + '/close', { method: 'POST' })
           .then(r => {
             let msg = '阶段已关闭';
@@ -1119,6 +1163,24 @@
         try { const r = await api('/api/results/release-expired', { method: 'POST' }); toast('释放完成：' + JSON.stringify(r), 'ok'); }
         catch (e) { toast(e.message, 'err'); }
       });
+      const resetBtn = document.getElementById('resetDatabase');
+      if (canResetDb) {
+        resetBtn.style.display = '';
+        resetBtn.addEventListener('click', async () => {
+          if (!await askConfirm('将删除全部业务数据，并按 schema.sql / init_data.sql 恢复为初始演示数据（含阶段与轮次排期），此操作不可撤销。确定执行吗？', '重置数据库')) return;
+          resetBtn.disabled = true;
+          try {
+            const r = await api('/api/admin/reset-database', { method: 'POST' });
+            toast(r.message || '数据库已重置为初始状态', 'ok');
+            loadProcess();
+            loadStats();
+          } catch (e) {
+            toast(e.message, 'err');
+          } finally {
+            resetBtn.disabled = false;
+          }
+        });
+      }
     }
 
     /* ---------------- 初始化 ---------------- */

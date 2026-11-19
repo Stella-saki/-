@@ -20,6 +20,8 @@ import json
 import logging
 import os
 import re
+import subprocess
+import sys
 import time
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -305,6 +307,45 @@ def require_adjust_round_filling(cur, round_id: Optional[int] = None) -> None:
         )
     if not cur.fetchone():
         raise HTTPException(status_code=409, detail="当前不在统筹调剂轮次，暂不能执行统筹调剂操作")
+
+
+def require_adjust_interviews_completed(cur, round_id: Optional[int] = None) -> None:
+    """统筹调剂未完成面试约谈/安置前，禁止进入结果公示。"""
+    cur.execute(
+        "SELECT round_id FROM selection_round "
+        "WHERE round_type = 'ADJUST' AND status = 'FILLING'"
+    )
+    for row in cur.fetchall():
+        if round_id is not None and row["round_id"] != round_id:
+            continue
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM adjustment "
+            "WHERE round_id = %s AND status = 'PENDING'",
+            (row["round_id"],),
+        )
+        pending = cur.fetchone()["c"]
+        cur.execute(
+            """
+            SELECT COUNT(*) AS c FROM student s
+            WHERE NOT EXISTS (
+                SELECT 1 FROM admission a
+                WHERE a.student_id = s.student_id
+                  AND a.status IN ('OCCUPIED','CONFIRMED','EFFECTIVE','ENROLLED'))
+            """
+        )
+        unplaced = cur.fetchone()["c"]
+        if pending or unplaced:
+            if pending:
+                detail = (
+                    f"统筹调剂还有 {pending} 名学生未完成面试约谈、{unplaced} 名学生未落实实训室，"
+                    "请完成约谈安置后再进行结果公示"
+                )
+            else:
+                detail = (
+                    f"统筹调剂还有 {unplaced} 名学生未落实实训室，"
+                    "请完成统筹安置后再进行结果公示"
+                )
+            raise HTTPException(status_code=409, detail=detail)
 
 
 def ensure_supplement_eligible(cur, student_id: int, round_type: str) -> None:
@@ -2494,6 +2535,17 @@ def propose_admission(body: ProposeIn, user: dict = Depends(current_teacher)):
             if intent["round_type"] == "ADJUST":
                 raise HTTPException(status_code=400, detail="统筹调剂轮次请走调剂流程")
 
+            # 只能拟录取当前进行中轮次的面试结果，历史轮次结果已过期
+            cur.execute(
+                "SELECT round_id FROM selection_round WHERE status = 'FILLING' LIMIT 1"
+            )
+            current_round = cur.fetchone()
+            if not current_round or intent["round_id"] != current_round["round_id"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail="该意向所在轮次已结束，面试结果已过期，只能拟录取当前轮次的学生",
+                )
+
             cur.execute(
                 """
                 SELECT p.session_id, p.checkin_status, s.start_time
@@ -2507,6 +2559,8 @@ def propose_admission(body: ProposeIn, user: dict = Depends(current_teacher)):
             participant = cur.fetchone()
             if not participant:
                 raise HTTPException(status_code=409, detail="该意向尚未安排面试")
+            if participant["checkin_status"] == "ABSENT":
+                raise HTTPException(status_code=409, detail="学生缺考，不能拟录取")
             if participant["checkin_status"] != "CHECKED_IN":
                 raise HTTPException(status_code=409, detail="学生未签到，不能拟录取")
 
@@ -2537,14 +2591,16 @@ def propose_admission(body: ProposeIn, user: dict = Depends(current_teacher)):
                 raise HTTPException(status_code=409, detail="该学生已有确认录取，不能再拟录取")
             cur.execute(
                 """
-                SELECT result_id FROM selection_result
-                WHERE round_id = %s AND lab_id = %s AND student_id = %s
-                  AND list_type = 'PROPOSED'
+                SELECT r.result_id FROM selection_result r
+                JOIN intent i2 ON i2.intent_id = r.intent_id
+                WHERE r.round_id = %s AND r.lab_id = %s AND r.student_id = %s
+                  AND r.list_type = 'PROPOSED' AND i2.mentor_id = %s
+                LIMIT 1
                 """,
-                (intent["round_id"], intent["lab_id"], intent["student_id"]),
+                (intent["round_id"], intent["lab_id"], intent["student_id"], intent["mentor_id"]),
             )
             if cur.fetchone():
-                raise HTTPException(status_code=409, detail="该学生已被本实训室拟录取")
+                raise HTTPException(status_code=409, detail="你已为该学生发起拟录取")
 
             cur.execute("SELECT quota FROM lab WHERE lab_id = %s FOR UPDATE", (intent["lab_id"],))
             quota = cur.fetchone()["quota"]
@@ -2678,19 +2734,26 @@ def my_proposals(user: dict = Depends(current_student)):
                 """
                 SELECT r.result_id, r.round_id, r.lab_id, l.name AS lab_name,
                        r.intent_id, r.score, r.rank_no, r.remark, r.generated_at,
+                       a.mentor_id, t.name AS mentor_name,
                        a.admission_id, a.status AS admission_status,
-                       a.confirm_deadline, a.confirmed_at
+                       a.confirm_deadline, a.confirmed_at,
+                       EXISTS(SELECT 1 FROM selection_round cr
+                              WHERE cr.status = 'FILLING'
+                                AND cr.round_id = r.round_id) AS is_current
                 FROM selection_result r
                 JOIN lab l ON l.lab_id = r.lab_id
+                LEFT JOIN intent i ON i.intent_id = r.intent_id
                 JOIN admission a ON a.admission_id = (
-                    SELECT a2.admission_id FROM admission a2
+                    SELECT MAX(a2.admission_id) FROM admission a2
                     WHERE a2.student_id = r.student_id
                       AND a2.lab_id = r.lab_id
                       AND a2.round_id = r.round_id
-                    ORDER BY a2.admission_id DESC LIMIT 1
+                      AND (i.mentor_id IS NULL OR a2.mentor_id = i.mentor_id)
                 )
+                LEFT JOIN mentor m ON m.mentor_id = a.mentor_id
+                LEFT JOIN teacher t ON t.teacher_id = m.teacher_id
                 WHERE r.student_id = %s AND r.list_type = 'PROPOSED'
-                ORDER BY r.generated_at DESC
+                ORDER BY r.generated_at DESC, r.result_id DESC
                 """,
                 (user["student_id"],),
             )
@@ -2710,12 +2773,13 @@ def confirm_admission(result_id: int, user: dict = Depends(current_student)):
                        r.score, a.admission_id, a.status AS admission_status,
                        a.confirm_deadline
                 FROM selection_result r
+                LEFT JOIN intent i ON i.intent_id = r.intent_id
                 JOIN admission a ON a.admission_id = (
-                    SELECT a2.admission_id FROM admission a2
+                    SELECT MAX(a2.admission_id) FROM admission a2
                     WHERE a2.student_id = r.student_id
                       AND a2.lab_id = r.lab_id
                       AND a2.round_id = r.round_id
-                    ORDER BY a2.admission_id DESC LIMIT 1
+                      AND (i.mentor_id IS NULL OR a2.mentor_id = i.mentor_id)
                 )
                 WHERE r.result_id = %s AND r.student_id = %s
                 """,
@@ -2726,6 +2790,16 @@ def confirm_admission(result_id: int, user: dict = Depends(current_student)):
                 raise HTTPException(status_code=404, detail="拟录取记录不存在")
             if result["admission_status"] != "OCCUPIED":
                 raise HTTPException(status_code=409, detail="该拟录取记录已处理")
+            # 只能确认当前进行中轮次的录取结果
+            cur.execute(
+                "SELECT round_id FROM selection_round WHERE status = 'FILLING' LIMIT 1"
+            )
+            current_round = cur.fetchone()
+            if not current_round or result["round_id"] != current_round["round_id"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail="该拟录取已过期，只能确认当前轮次的录取结果",
+                )
             cur.execute(
                 "SELECT * FROM admission WHERE admission_id = %s FOR UPDATE",
                 (result["admission_id"],),
@@ -2740,7 +2814,7 @@ def confirm_admission(result_id: int, user: dict = Depends(current_student)):
             )
             others = [r["admission_id"] for r in cur.fetchall()]
             for other_id in others:
-                release_admission(cur, other_id, 0, "学生选择其他实训室，自动释放")
+                release_admission(cur, other_id, 0, "学生选择其他导师或实训室，自动释放")
             cur.execute(
                 """
                 UPDATE admission
@@ -2853,12 +2927,14 @@ def abandon_proposal(result_id: int, body: Optional[AbandonIn] = None,
                 raise HTTPException(status_code=404, detail="拟录取记录不存在")
             cur.execute(
                 """
-                SELECT * FROM admission
-                WHERE student_id = %s AND lab_id = %s AND round_id = %s
-                  AND status IN ('OCCUPIED','CONFIRMED')
-                ORDER BY admission_id DESC LIMIT 1
+                SELECT a.* FROM admission a
+                LEFT JOIN intent i ON i.intent_id = %s
+                WHERE a.student_id = %s AND a.lab_id = %s AND a.round_id = %s
+                  AND (i.mentor_id IS NULL OR a.mentor_id = i.mentor_id)
+                  AND a.status IN ('OCCUPIED','CONFIRMED')
+                ORDER BY a.admission_id DESC LIMIT 1
                 """,
-                (user["student_id"], result["lab_id"], result["round_id"]),
+                (result["intent_id"], user["student_id"], result["lab_id"], result["round_id"]),
             )
             adm = cur.fetchone()
             if not adm:
@@ -2869,8 +2945,23 @@ def abandon_proposal(result_id: int, body: Optional[AbandonIn] = None,
             if not release_admission(cur, adm["admission_id"], 0, reason, status="ABANDONED"):
                 raise HTTPException(status_code=409, detail="该录取记录已释放")
             cur.execute(
-                "UPDATE student SET selection_state = 'NOT_FILLED' WHERE student_id = %s",
+                """
+                SELECT SUM(status = 'OCCUPIED') AS occupied,
+                       SUM(status IN ('CONFIRMED','EFFECTIVE','ENROLLED')) AS confirmed
+                FROM admission WHERE student_id = %s
+                """,
                 (user["student_id"],),
+            )
+            state_row = cur.fetchone()
+            if state_row["confirmed"]:
+                next_state = "CONFIRMED"
+            elif state_row["occupied"]:
+                next_state = "PENDING_CONFIRM"
+            else:
+                next_state = "NOT_FILLED"
+            cur.execute(
+                "UPDATE student SET selection_state = %s WHERE student_id = %s",
+                (next_state, user["student_id"]),
             )
             write_audit(
                 cur,
@@ -3170,9 +3261,16 @@ def lab_intents(lab_id: int, roundId: Optional[int] = None,
                 (lab_id, roundId, roundId, scope_mentor_id, scope_mentor_id),
             )
             items = cur.fetchall()
+            cur.execute(
+                "SELECT round_id FROM selection_round WHERE status = 'FILLING' LIMIT 1"
+            )
+            current_round = cur.fetchone()
+            current_round_id = current_round["round_id"] if current_round else None
             for it in items:
                 it["proposed"] = bool(it["proposed"])
-            return {"lab": lab_row, "items": items}
+                it["expired"] = current_round_id is None or it["round_id"] != current_round_id
+                it["absent"] = it["checkin_status"] == "ABSENT"
+            return {"lab": lab_row, "currentRoundId": current_round_id, "items": items}
     finally:
         conn.close()
 
@@ -3459,6 +3557,9 @@ def open_stage(stage_id: int, user: dict = Depends(current_teacher)):
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="阶段不存在")
+            # 统筹调剂未完成面试约谈与安置前，不允许开启结果公示阶段
+            if row["stage_code"] == "PUBLICITY":
+                require_adjust_interviews_completed(cur)
             # 允许同时开启的阶段对：面试考核 ↔ 拟录取确认
             partner_code = STAGE_PAIRS.get(row["stage_code"])
             partner_id = None
@@ -4192,6 +4293,7 @@ def publish_batch(body: PublicityBatchIn, user: dict = Depends(current_teacher))
     try:
         with conn.cursor() as cur:
             require_coordinator(cur, user)
+            require_adjust_interviews_completed(cur, body.roundId)
             created = _create_publicity_batch(
                 cur, user, body.roundId, body.startTime, body.endTime, body.remark)
             conn.commit()
@@ -4897,6 +4999,43 @@ def list_adjustments(roundId: Optional[int] = None,
             return {"items": cur.fetchall()}
     finally:
         conn.close()
+
+
+@app.post("/api/admin/reset-database")
+def reset_database(user: dict = Depends(current_teacher)):
+    """一键重置：删库重建并重新导入 schema.sql / init_data.sql（仅负责人或统筹岗）。"""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            roles = teacher_roles(cur, user["teacher_id"])
+            if not any(r["role_code"] in ("LAB_OWNER", "COORDINATOR") for r in roles):
+                raise HTTPException(status_code=403, detail="仅实训室负责人或全院统筹岗可重置数据库")
+    finally:
+        conn.close()
+
+    env = os.environ.copy()
+    env.update({
+        "DB_HOST": str(DB_CONFIG["host"]),
+        "DB_PORT": str(DB_CONFIG["port"]),
+        "DB_USER": DB_CONFIG["user"],
+        "DB_PASSWORD": DB_CONFIG["password"],
+        "DB_NAME": DB_CONFIG["database"],
+        "PYTHONIOENCODING": "utf-8",
+    })
+    try:
+        proc = subprocess.run(
+            [sys.executable, "reset_db.py"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            env=env, capture_output=True, text=True, encoding="utf-8", timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="重置超时，请检查数据库状态")
+    if proc.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=(proc.stderr or proc.stdout or "重置脚本执行失败")[-500:],
+        )
+    return {"ok": True, "message": "数据库已重置为初始状态", "output": proc.stdout.strip()}
 
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
