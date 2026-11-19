@@ -3034,7 +3034,11 @@ def lab_profiles(user: dict = Depends(current_user)):
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT l.lab_id, l.lab_code, l.name, l.college, l.direction, l.intro, l.quota
+                SELECT l.lab_id, l.lab_code, l.name, l.college, l.direction, l.intro, l.quota,
+                       (SELECT COUNT(*) FROM admission a
+                        WHERE a.lab_id = l.lab_id
+                          AND a.status IN ('OCCUPIED','CONFIRMED','EFFECTIVE','ENROLLED')
+                       ) AS occupied
                 FROM lab l
                 ORDER BY l.lab_id
                 """
@@ -3058,6 +3062,7 @@ def lab_profiles(user: dict = Depends(current_user)):
         grouped.setdefault(m["lab_id"], []).append(m)
     for lab in labs:
         lab["mentors"] = grouped.get(lab["lab_id"], [])
+        lab["remaining"] = max(0, lab["quota"] - lab["occupied"])
     return {"items": labs}
 
 
