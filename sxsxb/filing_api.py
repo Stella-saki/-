@@ -348,6 +348,41 @@ def require_adjust_interviews_completed(cur, round_id: Optional[int] = None) -> 
             raise HTTPException(status_code=409, detail=detail)
 
 
+def get_student_confirmed_admission(cur, student_id: int) -> Optional[dict]:
+    """查询学生已确认/已生效/已注册的有效录取（lab + mentor），无则返回 None。"""
+    cur.execute(
+        """
+        SELECT a.admission_id, a.status, a.round_id,
+               l.lab_id, l.name AS lab_name, l.lab_code,
+               t.name AS mentor_name, m.mentor_id,
+               a.confirmed_at
+        FROM admission a
+        JOIN lab l ON l.lab_id = a.lab_id
+        JOIN mentor m ON m.mentor_id = a.mentor_id
+        JOIN teacher t ON t.teacher_id = m.teacher_id
+        WHERE a.student_id = %s
+          AND a.status IN ('CONFIRMED','EFFECTIVE','ENROLLED')
+        ORDER BY a.confirmed_at DESC, a.admission_id DESC
+        LIMIT 1
+        """,
+        (student_id,),
+    )
+    return cur.fetchone() or None
+
+
+def ensure_not_confirmed(cur, student_id: int) -> None:
+    """通用校验：已确认/已生效录取的学生禁止任何后续填报（含 FIRST/SUPPLEMENT/ADJUST）。"""
+    adm = get_student_confirmed_admission(cur, student_id)
+    if adm:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"你已被「{adm['lab_name']}（{adm['lab_code']}）」{adm['mentor_name']} 导师"
+                f"确认录取（{adm['status']}），无需继续填报。"
+            ),
+        )
+
+
 def ensure_supplement_eligible(cur, student_id: int, round_type: str) -> None:
     """BR-17：仅未录取学生可参加补录轮次填报。"""
     if round_type not in ("SECOND", "THIRD"):
@@ -924,6 +959,23 @@ class ObjectionHandleIn(BaseModel):
     resolution: Optional[str] = None
 
 
+class StudentProfileUpdate(BaseModel):
+    """学生自行维护的简历字段（白名单，不含 selection_state 等系统字段）。"""
+    name: Optional[str] = None
+    gender: Optional[str] = None
+    grade: Optional[str] = None
+    major: Optional[str] = None
+    college: Optional[str] = None
+    programmingBase: Optional[str] = None
+    availableHours: Optional[float] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    gradeRank: Optional[str] = None
+    awards: Optional[str] = None
+    specialty: Optional[str] = None
+    devDirection: Optional[str] = None
+
+
 def now_of(cur) -> str:
     cur.execute("SELECT DATE_FORMAT(NOW(3), '%%Y-%%m-%%d %%H:%%i:%%s.%%f') AS now", ())
     return cur.fetchone()["now"]
@@ -1218,6 +1270,7 @@ def filing_context(user: dict = Depends(current_student)):
                     (user["student_id"], cur_round["round_id"]),
                 )
                 application = cur.fetchone()
+            confirmed = get_student_confirmed_admission(cur, user["student_id"])
         intent_stage_open = bool(stage and stage["status"] == "OPEN")
         supplement_stage_open = bool(supplement and supplement["status"] == "OPEN")
         is_open = cur_round is not None and (
@@ -1225,6 +1278,8 @@ def filing_context(user: dict = Depends(current_student)):
             else supplement_stage_open if cur_round["round_type"] in ("SECOND", "THIRD")
             else False
         )
+        if confirmed:
+            is_open = False
         return {
             "serverTime": server_time,
             "stage": stage,
@@ -1234,6 +1289,7 @@ def filing_context(user: dict = Depends(current_student)):
             "intentLimit": cur_round["intent_limit"] if (cur_round and is_open) else None,
             "mentors": mentors,
             "application": application,
+            "confirmedAdmission": confirmed,
         }
     finally:
         conn.close()
@@ -1248,6 +1304,7 @@ def create_application(user: dict = Depends(current_student)):
             if not round_row:
                 raise HTTPException(status_code=409, detail="当前不在意向填报时间窗内")
             ensure_fill_window(cur, round_row["round_id"])
+            ensure_not_confirmed(cur, user["student_id"])
             ensure_supplement_eligible(cur, user["student_id"], round_row["round_type"])
             cur.execute(
                 """
@@ -1304,6 +1361,7 @@ def save_intents(application_id: int, body: IntentsIn, user: dict = Depends(curr
             if application["status"] != "DRAFT":
                 raise HTTPException(status_code=409, detail="已提交，不能修改意向")
             round_row = ensure_fill_window(cur, application["round_id"])
+            ensure_not_confirmed(cur, user["student_id"])
             ensure_supplement_eligible(cur, user["student_id"], round_row["round_type"])
 
             mentor_ids = list(body.mentorIds)
@@ -1398,6 +1456,7 @@ def submit_application(application_id: int, user: dict = Depends(current_student
             if application["status"] != "DRAFT":
                 raise HTTPException(status_code=409, detail="该申请单已提交")
             ensure_fill_window(cur, application["round_id"])
+            ensure_not_confirmed(cur, user["student_id"])
             cur.execute("SELECT COUNT(*) AS c FROM intent WHERE application_id = %s", (application_id,))
             count = cur.fetchone()["c"]
             if count == 0:
@@ -2020,6 +2079,73 @@ def get_session_student_profile(session_id: int, student_id: int,
             if not profile:
                 raise HTTPException(status_code=404, detail="学生不存在")
             return profile
+    finally:
+        conn.close()
+
+
+# ---------- 学生简历（自维护）----------
+STUDENT_PROFILE_READ = (
+    "SELECT student_id, student_no, name, gender, grade, major, college, "
+    "programming_base, available_hours, phone, email, grade_rank, awards, "
+    "specialty, dev_direction, selection_state, created_at, updated_at "
+    "FROM student WHERE student_id = %s"
+)
+
+STUDENT_PROFILE_UPDATABLE = {
+    "name": "name", "gender": "gender", "grade": "grade",
+    "major": "major", "college": "college",
+    "programmingBase": "programming_base",
+    "availableHours": "available_hours",
+    "phone": "phone", "email": "email",
+    "gradeRank": "grade_rank",
+    "awards": "awards", "specialty": "specialty",
+    "devDirection": "dev_direction",
+}
+
+
+@app.get("/api/students/me/profile")
+def get_my_profile(user: dict = Depends(current_student)):
+    """学生读取自己的简历。"""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(STUDENT_PROFILE_READ, (user["student_id"],))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="学生记录不存在")
+            return row
+    finally:
+        conn.close()
+
+
+@app.patch("/api/students/me/profile")
+def update_my_profile(body: StudentProfileUpdate, user: dict = Depends(current_student)):
+    """学生更新自己的简历（仅白名单字段，防越权与系统字段篡改）。"""
+    payload = body.model_dump(exclude_none=True) if hasattr(body, "model_dump") else body.dict(exclude_none=True)
+    if not payload:
+        raise HTTPException(status_code=400, detail="未提交任何可更新字段")
+
+    pairs = []
+    args = []
+    for py_name, db_col in STUDENT_PROFILE_UPDATABLE.items():
+        if py_name in payload:
+            pairs.append(f"{db_col} = %s")
+            args.append(payload[py_name])
+    if not pairs:
+        raise HTTPException(status_code=400, detail="无有效更新字段")
+
+    args.append(user["student_id"])
+    sql = f"UPDATE student SET {', '.join(pairs)} WHERE student_id = %s"
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, tuple(args))
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="学生记录不存在")
+            conn.commit()
+            cur.execute(STUDENT_PROFILE_READ, (user["student_id"],))
+            return cur.fetchone()
     finally:
         conn.close()
 

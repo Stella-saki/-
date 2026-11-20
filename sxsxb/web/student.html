@@ -10,7 +10,7 @@
   <div class="topbar">
     <div class="brand"><span class="dot"></span><span class="txt">实训室选报系统</span></div>
     <span class="spacer"></span>
-    <div class="who" id="userBox"></div>
+    <div class="who" id="userBox" title="点击进入个人简历" style="cursor:pointer"></div>
     <button class="icon-btn" id="bellBtn" title="通知中心">🔔<span class="badge" id="unreadBadge" style="display:none">0</span></button>
     <button class="btn sm ghost" id="logoutBtn" style="background:rgba(255,255,255,.14);color:#fff;border-color:transparent">退出</button>
   </div>
@@ -54,7 +54,7 @@
       <div class="card">
         <div class="row" style="justify-content:space-between;align-items:center">
           <h3 style="margin:0">实训室信息</h3>
-          <a class="btn sm ghost" href="briefing.html" target="_blank" rel="noopener">回顾宣讲</a>
+          <a class="btn sm ghost" href="briefing.html">回顾宣讲</a>
         </div>
         <div class="sub">了解各实训室的主要方向、简介与导师情况；本页仅供查阅，不能修改。</div>
         <div id="labProfileList"><div class="empty">加载中…</div></div>
@@ -140,12 +140,95 @@
         <div id="roundList"><div class="empty">加载中…</div></div>
       </div>
     </section>
+
+    <!-- 个人简历（隐藏式：点击顶部名字进入） -->
+    <section class="panel" id="panel-profile">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <h3 style="margin:0">个人简历 <span class="pill gray">学生自维护</span></h3>
+          <button class="btn ghost sm" id="profileBackBtn">← 返回</button>
+        </div>
+        <div class="sub">面试前请完善个人简历，导师将据此了解你的基本情况、编程基础与发展方向。学号、选拔状态由系统维护，不可修改。</div>
+
+        <div id="profileLoaded" style="display:none">
+          <!-- 基本信息 -->
+          <h4 style="margin:18px 0 8px;color:var(--ink-1);font-size:14px;border-left:3px solid var(--brand);padding-left:8px">基本信息</h4>
+          <div class="row">
+            <label class="field grow"><span>姓名 *</span>
+              <input type="text" id="pfName" maxlength="50"></label>
+            <label class="field"><span>性别</span>
+              <select id="pfGender">
+                <option value="">—</option>
+                <option value="男">男</option>
+                <option value="女">女</option>
+              </select></label>
+            <label class="field"><span>学号</span>
+              <input type="text" id="pfNo" disabled style="background:#f2ece5;cursor:not-allowed"></label>
+          </div>
+          <div class="row">
+            <label class="field"><span>年级</span>
+              <input type="text" id="pfGrade" maxlength="16" placeholder="如：2023级"></label>
+            <label class="field grow"><span>专业</span>
+              <input type="text" id="pfMajor" maxlength="64"></label>
+            <label class="field grow"><span>学院</span>
+              <input type="text" id="pfCollege" maxlength="64"></label>
+          </div>
+
+          <!-- 联系方式 -->
+          <h4 style="margin:18px 0 8px;color:var(--ink-1);font-size:14px;border-left:3px solid var(--brand);padding-left:8px">联系方式</h4>
+          <div class="row">
+            <label class="field"><span>手机号</span>
+              <input type="text" id="pfPhone" maxlength="32" placeholder="11 位手机号"></label>
+            <label class="field grow"><span>邮箱</span>
+              <input type="email" id="pfEmail" maxlength="64" placeholder="your@email.com"></label>
+          </div>
+
+          <!-- 项目相关 -->
+          <h4 style="margin:18px 0 8px;color:var(--ink-1);font-size:14px;border-left:3px solid var(--brand);padding-left:8px">项目相关</h4>
+          <div class="row">
+            <label class="field"><span>编程基础</span>
+              <select id="pfProgBase">
+                <option value="">—</option>
+                <option value="NONE">无</option>
+                <option value="BASIC">基础</option>
+                <option value="GOOD">较好</option>
+              </select></label>
+            <label class="field"><span>每周可投入（小时）</span>
+              <input type="number" id="pfHours" step="0.5" min="0" max="40"></label>
+            <label class="field"><span>年级排名</span>
+              <input type="text" id="pfRank" maxlength="32" placeholder="如：3/120"></label>
+          </div>
+
+          <!-- 简历详情 -->
+          <h4 style="margin:18px 0 8px;color:var(--ink-1);font-size:14px;border-left:3px solid var(--brand);padding-left:8px">简历详情</h4>
+          <div class="row">
+            <label class="field grow"><span>获奖情况</span>
+              <textarea id="pfAwards" maxlength="500" placeholder="如：2024 年校级编程大赛一等奖…"></textarea></label>
+          </div>
+          <div class="row">
+            <label class="field grow"><span>擅长方向</span>
+              <textarea id="pfSpecialty" maxlength="200" placeholder="如：算法、前端、数据库…"></textarea></label>
+          </div>
+          <div class="row">
+            <label class="field grow"><span>意向发展方向</span>
+              <textarea id="pfDevDir" maxlength="200" placeholder="如：AI 应用、数据工程、全栈开发…"></textarea></label>
+          </div>
+
+          <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px">
+            <span id="pfSavedTip" style="color:var(--ink-3);font-size:12px;margin-right:auto"></span>
+            <button class="btn ghost" id="pfResetBtn">恢复原值</button>
+            <button class="btn ok" id="pfSaveBtn">保存修改</button>
+          </div>
+        </div>
+        <div id="profileLoadErr" class="empty" style="display:none"></div>
+      </div>
+    </section>
   </div>
 
   <script src="common.js?v=20261116a"></script>
   <script>
     const user = requireUser('STUDENT');
-    const state = { ctx: null, application: null, selected: new Set(), submitted: false };
+    const state = { ctx: null, application: null, selected: new Set(), submitted: false, lastTab: null, profileOrig: null };
     let openTab = null;
 
     const STATUS_TEXT = {
@@ -192,8 +275,20 @@
     function renderRoundCard(ctx) {
       const r = ctx.round;
       const next = ctx.nextRound;
+      const adm = ctx.confirmedAdmission;
       let html = '';
-      if (ctx.isOpen && r) {
+      if (adm) {
+        const statusText = ({CONFIRMED:'已确认', EFFECTIVE:'已生效', ENROLLED:'已注册'})[adm.status] || adm.status;
+        html = `
+          <h3>你已确认录取，无需再填报</h3>
+          <div class="sub">
+            🎉 恭喜你已被「${esc(adm.lab_name)}（${esc(adm.lab_code)}）」
+            <strong>${esc(adm.mentor_name)}</strong> 导师
+            <span class="pill green">${statusText}</span>
+          </div>
+          ${adm.confirmed_at ? `<div class="hint">确认时间：${fmtTime(adm.confirmed_at)}</div>` : ''}
+          <div class="hint info">后续所有填报轮次（含补录、统筹调剂）均已自动豁免，直接等待结果公示即可。</div>`;
+      } else if (ctx.isOpen && r) {
         html = `
           <h3>${esc(r.round_name)} · ${ctx.intentLimit} 个平行意向</h3>
           <div class="sub">开放状态由管理员控制，当前已开放填报　|　服务器时间：${fmtTime(ctx.serverTime)}</div>
@@ -220,6 +315,14 @@
       const saveBtn = document.getElementById('saveBtn');
       const submitBtn = document.getElementById('submitBtn');
 
+      if (ctx.confirmedAdmission) {
+        box.innerHTML = '<div class="empty">已确认录取，导师列表已锁定。请查看上方录取提示。</div>';
+        tip.textContent = '';
+        saveBtn.disabled = submitBtn.disabled = true;
+        saveBtn.textContent = '不可填报';
+        submitBtn.textContent = '不可提交';
+        return;
+      }
       if (!ctx.isOpen) {
         box.innerHTML = '<div class="empty">当前不可填报</div>';
         saveBtn.disabled = submitBtn.disabled = true;
@@ -653,6 +756,101 @@
     document.getElementById('objSubmit').addEventListener('click', submitObjection);
     document.getElementById('odSubmit').addEventListener('click', submitOpenDay);
 
+    /* ---------------- 个人简历 ---------------- */
+    function fillProfileForm(p) {
+      state.profileOrig = { ...p };
+      document.getElementById('pfNo').value = p.student_no || '';
+      document.getElementById('pfName').value = p.name || '';
+      document.getElementById('pfGender').value = p.gender || '';
+      document.getElementById('pfGrade').value = p.grade || '';
+      document.getElementById('pfMajor').value = p.major || '';
+      document.getElementById('pfCollege').value = p.college || '';
+      document.getElementById('pfPhone').value = p.phone || '';
+      document.getElementById('pfEmail').value = p.email || '';
+      document.getElementById('pfProgBase').value = p.programming_base || '';
+      document.getElementById('pfHours').value = p.available_hours ?? '';
+      document.getElementById('pfRank').value = p.grade_rank || '';
+      document.getElementById('pfAwards').value = p.awards || '';
+      document.getElementById('pfSpecialty').value = p.specialty || '';
+      document.getElementById('pfDevDir').value = p.dev_direction || '';
+      document.getElementById('pfSavedTip').textContent = '';
+    }
+
+    async function loadProfile() {
+      const box = document.getElementById('profileLoaded');
+      const err = document.getElementById('profileLoadErr');
+      box.style.display = 'none';
+      err.style.display = 'none';
+      try {
+        const p = await api('/api/students/me/profile');
+        fillProfileForm(p);
+        box.style.display = '';
+      } catch (e) {
+        err.textContent = '加载失败：' + e.message;
+        err.style.display = '';
+      }
+    }
+
+    function openProfile() {
+      // 记住当前 tab
+      const activeBtn = document.querySelector('.tab-btn.active');
+      state.lastTab = activeBtn ? activeBtn.dataset.tab : 'filing';
+      // 隐藏所有 panel + 清除 tab active
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      // 显示 profile
+      document.getElementById('panel-profile').classList.add('active');
+      loadProfile();
+    }
+
+    function backFromProfile() {
+      if (openTab && state.lastTab) openTab(state.lastTab);
+      else if (openTab) openTab('filing');
+    }
+
+    function readProfileForm() {
+      return {
+        name: document.getElementById('pfName').value.trim(),
+        gender: document.getElementById('pfGender').value || null,
+        grade: document.getElementById('pfGrade').value.trim() || null,
+        major: document.getElementById('pfMajor').value.trim() || null,
+        college: document.getElementById('pfCollege').value.trim() || null,
+        programmingBase: document.getElementById('pfProgBase').value || null,
+        availableHours: document.getElementById('pfHours').value === '' ? null : Number(document.getElementById('pfHours').value),
+        phone: document.getElementById('pfPhone').value.trim() || null,
+        email: document.getElementById('pfEmail').value.trim() || null,
+        gradeRank: document.getElementById('pfRank').value.trim() || null,
+        awards: document.getElementById('pfAwards').value.trim() || null,
+        specialty: document.getElementById('pfSpecialty').value.trim() || null,
+        devDirection: document.getElementById('pfDevDir').value.trim() || null,
+      };
+    }
+
+    async function saveProfile() {
+      const data = readProfileForm();
+      if (!data.name) { toast('姓名不能为空', 'err'); return; }
+      const btn = document.getElementById('pfSaveBtn');
+      btn.disabled = true; btn.textContent = '保存中…';
+      try {
+        const saved = await api('/api/students/me/profile', {
+          method: 'PATCH', body: data,
+        });
+        fillProfileForm(saved);
+        toast('简历已保存', 'ok');
+        document.getElementById('pfSavedTip').textContent = '✓ 刚刚保存于 ' + fmtTime(new Date().toISOString());
+      } catch (e) {
+        toast(e.message, 'err');
+      } finally {
+        btn.disabled = false; btn.textContent = '保存修改';
+      }
+    }
+
+    function resetProfile() {
+      if (!state.profileOrig) { loadProfile(); return; }
+      fillProfileForm(state.profileOrig);
+      toast('已恢复原值', 'ok');
+    }
+
     (function init() {
       initShell('实训室选报系统', '学生');
       const tomorrow = new Date(Date.now() + 86400000);
@@ -665,6 +863,11 @@
         if (tab === 'openday') loadOpenDay();
         if (tab === 'process') loadProcess();
       });
+      // 简历相关事件绑定
+      document.getElementById('userBox').addEventListener('click', openProfile);
+      document.getElementById('profileBackBtn').addEventListener('click', backFromProfile);
+      document.getElementById('pfSaveBtn').addEventListener('click', saveProfile);
+      document.getElementById('pfResetBtn').addEventListener('click', resetProfile);
       loadFiling();
     })();
   </script>

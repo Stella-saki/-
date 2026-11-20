@@ -267,7 +267,15 @@ async function load(){
 document.getElementById('prevBtn').addEventListener('click', () => go(index - 1));
 document.getElementById('nextBtn').addEventListener('click', () => go(index + 1));
 document.getElementById('backBtn').addEventListener('click', () => {
-  if (document.referrer) history.back(); else location.href = 'teacher.html';
+  // 优先走浏览器历史（能回到来源页）
+  if (document.referrer && history.length > 1) { history.back(); return; }
+  // 尝试关闭窗口（若由 JS 新开）
+  try { window.close(); } catch (e) {}
+  // 兜底：按角色跳对应工作台
+  try {
+    const u = JSON.parse(localStorage.getItem('sxsxb_user') || '{}');
+    location.href = (u.userType === 'TEACHER') ? 'teacher.html' : 'student.html';
+  } catch (e) { location.href = 'index.html'; }
 });
 document.getElementById('fsBtn').addEventListener('click', () => {
   if (document.fullscreenElement) document.exitFullscreen();
